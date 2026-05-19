@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solvit · Performance & Coaching Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   DESIGN TOKENS — RED / WHITE / BLACK brand palette
+   Data semantics: BLACK = strong/good, RED = needs work,
+   GREY = neutral/insufficient. The red doubles as the brand
+   accent color (buttons, focus, active states).
+   ============================================================ */
+:root {
+  --ink-900: #0E0E10;     /* near-black */
+  --ink-800: #1A1A1E;
+  --ink-700: #2A2A2E;
+  --ink-500: #5A5A60;
+  --ink-400: #7A7A80;
+  --ink-300: #9A9A9F;
+  --ink-200: #D4D4D8;
+  --ink-100: #E8E8EC;
+  --ink-50:  #F4F4F2;
+
+  --paper:      #FAFAF7;
+  --card:       #FFFFFF;
+
+  --brand:      #D9252A;   /* Solvit red */
+  --brand-mid:  #B81E22;
+  --brand-dark: #8C161A;
+  --brand-soft: #FDE5E6;   /* pale red for badge backgrounds */
+  --brand-pale: #FFF4F5;   /* even paler for table-row highlight */
+
+  --warn:       #E97A7C;   /* muted red for "close" states */
+
+  --shadow-card: 0 1px 0 var(--ink-100), 0 6px 24px rgba(14,14,16,0.04);
+  --shadow-pop:  0 24px 64px rgba(14,14,16,0.18);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: "Inter Tight", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--ink-900);
+  background: var(--paper);
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.tnum { font-variant-numeric: tabular-nums; }
+button { font-family: inherit; cursor: pointer; }
+
+/* Layout */
+.app { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+
+/* ============================================================
+   SIDEBAR — pure black background, red brand accent
+   ============================================================ */
+.sidebar {
+  background: var(--ink-900); color: var(--ink-100);
+  padding: 32px 24px;
+  display: flex; flex-direction: column; gap: 28px;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.brand {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+  color: #FFFFFF; display: flex; align-items: baseline; gap: 8px;
+}
+.brand .dot {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--brand); margin-right: 2px;
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.18);
+}
+.brand .small {
+  font-family: "Inter Tight", sans-serif;
+  font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-300); margin-left: 4px;
+}
+.side-section { display: flex; flex-direction: column; gap: 8px; }
+.side-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em;
+  font-weight: 600; color: var(--ink-300); margin-bottom: 4px;
+}
+.period-select, .period-input {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--ink-700); color: #FFFFFF;
+  padding: 10px 12px; border-radius: 6px;
+  font-family: inherit; font-size: 13px; width: 100%;
+}
+.period-select:focus, .period-input:focus {
+  outline: none; border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.15);
+}
+.period-select option { background: var(--ink-900); }
+
+.upload-zone {
+  border: 1.5px dashed var(--ink-700); border-radius: 10px;
+  padding: 14px 12px; text-align: center; cursor: pointer;
+  transition: all .15s; color: var(--ink-200);
+}
+.upload-zone:hover { border-color: var(--brand); background: rgba(217,37,42,0.08); color: #FFFFFF; }
+.upload-zone .icon { font-size: 18px; margin-bottom: 4px; }
+.upload-zone .label { font-size: 13px; font-weight: 500; }
+.upload-zone .hint { font-size: 11px; color: var(--ink-300); margin-top: 2px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 6px;
+  color: var(--ink-200); cursor: pointer;
+  font-size: 13px; font-weight: 500; transition: all .12s;
+}
+.nav-item:hover { background: rgba(255,255,255,0.05); color: #FFFFFF; }
+.nav-item.active { background: var(--brand); color: #FFFFFF; }
+.nav-item.active .num { color: rgba(255,255,255,0.85); }
+.nav-item .num {
+  margin-left: auto; font-size: 11px; color: var(--ink-300); font-weight: 600;
+}
+
+.side-footer { margin-top: auto; font-size: 11px; color: var(--ink-500); line-height: 1.5; }
+.side-footer .small-btn {
+  display: block; margin-top: 8px; padding: 8px 12px;
+  background: transparent; border: 1px solid var(--ink-700);
+  border-radius: 6px; color: var(--ink-300);
+  font-size: 12px; cursor: pointer; text-align: center;
+  width: 100%; transition: all .12s; font-family: inherit;
+}
+.side-footer .small-btn:hover { color: #FFFFFF; border-color: var(--ink-500); }
+
+/* Main area */
+.main { padding: 36px 48px 80px; overflow-x: hidden; }
+
+.page-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding-bottom: 28px; margin-bottom: 32px;
+  border-bottom: 1px solid var(--ink-100);
+  gap: 24px;
+}
+.page-title { font-size: 38px; line-height: 1.05; }
+.page-title .accent { color: var(--brand); }
+.page-subtitle { margin-top: 8px; font-size: 14px; color: var(--ink-500); }
+.page-actions { display: flex; gap: 8px; align-items: center; }
+
+.page-meta { text-align: right; font-size: 12px; color: var(--ink-500); white-space: nowrap; }
+.page-meta .big {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 24px; font-weight: 600; color: var(--ink-900);
+  letter-spacing: -0.02em;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 80px 40px;
+  background: var(--card); border-radius: 14px;
+  border: 1px solid var(--ink-100);
+}
+.empty-state h2 { font-size: 28px; margin-bottom: 12px; }
+.empty-state p {
+  color: var(--ink-500); max-width: 480px; margin: 0 auto; font-size: 14px;
+}
+.empty-state .cta {
+  display: inline-block; margin-top: 28px; padding: 14px 28px;
+  background: var(--brand); color: #FFFFFF;
+  border-radius: 6px; font-size: 14px; font-weight: 500;
+  border: none; cursor: pointer; transition: all .12s;
+}
+.empty-state .cta:hover { background: var(--brand-dark); }
+
+/* ============================================================
+   KPI cards — six this time, narrower
+   ============================================================ */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: 16px; margin-bottom: 36px;
+}
+.kpi {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.kpi .label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  font-weight: 600; color: var(--ink-500);
+}
+.kpi .value {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -0.025em; line-height: 1;
+}
+.kpi .value .unit { font-size: 14px; color: var(--ink-300); font-weight: 500; margin-left: 4px; }
+.kpi .delta {
+  font-size: 11px; color: var(--ink-500); display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.kpi .badge {
+  display: inline-block; padding: 2px 7px;
+  border-radius: 999px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.kpi .badge.ok { background: var(--ink-900); color: #FFFFFF; }
+.kpi .badge.warn { background: #FDD; color: var(--brand-mid); }
+.kpi .badge.bad { background: var(--brand); color: #FFFFFF; }
+.kpi .badge.neutral { background: var(--ink-100); color: var(--ink-500); }
+
+@media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Section */
+.section { margin-bottom: 36px; }
+.section-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title { font-size: 20px; }
+.section-sub { font-size: 12px; color: var(--ink-500); }
+
+/* Distribution cards */
+.dist-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.dist-card {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; padding: 20px;
+}
+.dist-card .header {
+  display: flex; justify-content: space-between;
+  align-items: baseline; margin-bottom: 12px;
+}
+.dist-card .title { font-size: 13px; font-weight: 600; }
+.dist-card .target { font-size: 11px; color: var(--ink-500); }
+.dist-card canvas { width: 100% !important; height: 110px !important; }
+
+@media (max-width: 1100px) { .dist-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .dist-grid { grid-template-columns: 1fr; } }
+
+/* Solvers table */
+.solvers-card {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; overflow: hidden;
+}
+.solvers-toolbar {
+  display: flex; gap: 12px; padding: 16px 20px;
+  border-bottom: 1px solid var(--ink-100); align-items: center;
+  flex-wrap: wrap;
+}
+.search-box { flex: 1; position: relative; min-width: 220px; max-width: 320px; }
+.search-box input {
+  width: 100%; padding: 8px 12px 8px 36px;
+  border: 1px solid var(--ink-200); border-radius: 6px;
+  font-family: inherit; font-size: 13px; background: var(--paper);
+}
+.search-box input:focus {
+  outline: none; border-color: var(--brand); background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.10);
+}
+.search-box::before {
+  content: "⌕"; position: absolute; left: 12px; top: 50%;
+  transform: translateY(-50%); color: var(--ink-300); font-size: 14px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.1em; font-weight: 600; color: var(--ink-500);
+  padding: 12px 16px; border-bottom: 1px solid var(--ink-100);
+  background: var(--ink-50); cursor: pointer; user-select: none;
+  white-space: nowrap;
+}
+thead th:hover { color: var(--ink-900); }
+thead th.sort-asc::after { content: " ↑"; color: var(--ink-900); }
+thead th.sort-desc::after { content: " ↓"; color: var(--ink-900); }
+tbody tr { border-bottom: 1px solid var(--ink-100); cursor: pointer; transition: background .1s; }
+tbody tr:hover { background: var(--ink-50); }
+tbody tr.selected { background: var(--brand-pale); }
+tbody td { padding: 12px 16px; vertical-align: middle; }
+td.name { font-weight: 500; }
+td.num { font-variant-numeric: tabular-nums; }
+td.num.dim { color: var(--ink-300); }
+
+.metric-cell { display: flex; align-items: center; gap: 10px; }
+.metric-cell .value {
+  font-variant-numeric: tabular-nums; font-weight: 500;
+  min-width: 52px; text-align: right;
+}
+.metric-cell .bar {
+  flex: 1; height: 4px; border-radius: 2px;
+  background: var(--ink-100); position: relative; overflow: hidden; max-width: 100px;
+}
+.metric-cell .bar-fill {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  border-radius: 2px; transition: width .3s;
+}
+
+.focus-tag {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 4px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.02em; margin-right: 4px;
+  text-transform: lowercase;
+}
+.focus-tag.time { background: var(--brand-soft); color: var(--brand-dark); }
+.focus-tag.submission { background: var(--brand-soft); color: var(--brand-dark); }
+.focus-tag.rating { background: var(--ink-100); color: var(--ink-700); }
+.focus-tag.strong { background: var(--ink-900); color: #FFFFFF; }
+
+/* ============================================================
+   BUTTONS — red as brand color
+   ============================================================ */
+.btn {
+  padding: 9px 16px; border: 1px solid var(--ink-200);
+  background: transparent; border-radius: 6px;
+  font-size: 13px; font-weight: 500; color: var(--ink-700);
+  cursor: pointer; transition: all .12s;
+  font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-700); color: var(--ink-900); }
+.btn.primary {
+  background: var(--brand); color: #FFFFFF; border-color: var(--brand);
+}
+.btn.primary:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.btn.ghost {
+  background: transparent; border-color: var(--ink-700); color: var(--ink-900);
+}
+.btn.ghost:hover { background: var(--ink-50); }
+.btn.dark {
+  background: var(--ink-900); color: #FFFFFF; border-color: var(--ink-900);
+}
+.btn.dark:hover { background: var(--ink-700); border-color: var(--ink-700); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* ============================================================
+   DRAWER
+   ============================================================ */
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(14,14,16,0.4);
+  z-index: 100; opacity: 0; pointer-events: none;
+  transition: opacity .2s;
+}
+.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 700px; max-width: 100%;
+  background: var(--paper); z-index: 101;
+  transform: translateX(100%);
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-pop);
+  overflow-y: auto; display: flex; flex-direction: column;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-header {
+  padding: 32px 36px 20px;
+  border-bottom: 1px solid var(--ink-100);
+  background: var(--card); position: sticky; top: 0; z-index: 2;
+}
+.drawer-close {
+  position: absolute; top: 24px; right: 24px;
+  background: transparent; border: 1px solid var(--ink-200);
+  border-radius: 50%; width: 32px; height: 32px;
+  font-size: 16px; color: var(--ink-500);
+}
+.drawer-close:hover { color: var(--ink-900); border-color: var(--ink-700); }
+.drawer h2 { font-size: 28px; }
+.drawer .subtitle { color: var(--ink-500); font-size: 13px; margin-top: 4px; }
+.drawer-body { padding: 28px 36px; }
+.drawer-section { margin-bottom: 28px; }
+.drawer-section h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em;
+  font-weight: 600; color: var(--ink-500); margin-bottom: 12px;
+  font-family: "Inter Tight", sans-serif;
+}
+
+.scorecard-bars { display: flex; flex-direction: column; gap: 16px; }
+.scorebar {
+  display: grid; grid-template-columns: 120px 1fr 80px;
+  align-items: center; gap: 14px;
+}
+.scorebar .label { font-size: 13px; font-weight: 500; color: var(--ink-700); }
+.scorebar .track {
+  height: 22px; background: var(--ink-100);
+  border-radius: 4px; position: relative; overflow: visible;
+}
+.scorebar .fill {
+  position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px;
+}
+.scorebar .target-mark {
+  position: absolute; top: -4px; bottom: -4px;
+  width: 2px; background: var(--ink-700);
+}
+.scorebar .target-mark::after {
+  content: "target"; position: absolute; top: -16px; left: 50%;
+  transform: translateX(-50%); font-size: 10px;
+  color: var(--ink-500); white-space: nowrap;
+}
+.scorebar .team-mark {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 8px; height: 8px; background: #FFFFFF;
+  border: 2px solid var(--ink-500); border-radius: 50%;
+}
+.scorebar .num {
+  font-variant-numeric: tabular-nums; font-weight: 600;
+  font-size: 14px; text-align: right;
+}
+
+.numbers-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.numbox {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 6px; padding: 14px 16px;
+}
+.numbox .lbl {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+  font-weight: 600; color: var(--ink-500); margin-bottom: 6px;
+}
+.numbox .val {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+}
+.numbox .sub { font-size: 11px; color: var(--ink-500); margin-top: 2px; }
+
+/* Trend chart card */
+.trend-card {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; padding: 20px;
+}
+.trend-card .head {
+  display: flex; justify-content: space-between; margin-bottom: 12px;
+}
+.trend-card .head .title { font-size: 13px; font-weight: 600; }
+.trend-card .head .legend { font-size: 11px; color: var(--ink-500); }
+
+.coaching-block {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; padding: 22px 24px; margin-bottom: 16px;
+  border-left: 3px solid var(--ink-900);
+}
+.coaching-block.time { border-left-color: var(--brand); }
+.coaching-block.submission { border-left-color: var(--brand); }
+.coaching-block.strong { border-left-color: var(--ink-900); }
+.coaching-block h4 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px; font-weight: 600; margin-bottom: 12px;
+}
+.coaching-block ol, .coaching-block ul { padding-left: 20px; margin: 8px 0; }
+.coaching-block li { margin-bottom: 6px; font-size: 13px; }
+.coaching-block p { font-size: 13px; margin: 8px 0; color: var(--ink-700); }
+.coaching-block strong { color: var(--ink-900); font-weight: 600; }
+
+.pending-reasons { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.pending-row {
+  display: flex; justify-content: space-between;
+  font-size: 12px; padding: 6px 0;
+  border-bottom: 1px solid var(--ink-100);
+}
+.pending-row .reason { color: var(--ink-700); }
+.pending-row .count { font-weight: 600; }
+
+.drawer-cta { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+
+.email-status-line {
+  background: var(--ink-50); padding: 10px 14px; border-radius: 6px;
+  margin-top: 10px; font-size: 12px; color: var(--ink-700);
+  display: flex; align-items: center; gap: 8px;
+}
+.email-status-line.warn { background: var(--brand-soft); color: var(--brand-dark); }
+.email-status-line input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-family: inherit; font-size: 12px; color: inherit;
+  border-bottom: 1px dashed var(--ink-300); padding: 2px 0;
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(14,14,16,0.5);
+  z-index: 200; display: none;
+  align-items: center; justify-content: center;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--card); border-radius: 14px;
+  max-width: 720px; width: 100%; max-height: 80vh;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-pop);
+  margin: 24px;
+}
+.modal-header {
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--ink-100);
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.modal-header h2 { font-size: 22px; }
+.modal-header .sub { font-size: 13px; color: var(--ink-500); margin-top: 4px; }
+.modal-body { padding: 24px 28px; overflow-y: auto; flex: 1; }
+.modal-footer {
+  padding: 16px 28px; border-top: 1px solid var(--ink-100);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+.email-list { display: flex; flex-direction: column; gap: 8px; }
+.email-row {
+  display: grid; grid-template-columns: 1fr 1.4fr auto;
+  gap: 8px; align-items: center; padding: 10px 12px;
+  background: var(--paper); border-radius: 6px;
+  border: 1px solid var(--ink-100);
+}
+.email-row .name { font-size: 13px; font-weight: 500; }
+.email-row input {
+  padding: 6px 10px; border: 1px solid var(--ink-200);
+  border-radius: 4px; font-family: inherit; font-size: 13px;
+  background: #FFFFFF;
+}
+.email-row input:focus { outline: none; border-color: var(--brand); }
+.email-row .save-btn {
+  background: var(--ink-900); color: #FFFFFF; border: none;
+  border-radius: 4px; padding: 6px 12px; font-size: 12px;
+  cursor: pointer;
+}
+.email-row .save-btn:hover { background: var(--brand); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--ink-900); color: #FFFFFF;
+  padding: 12px 18px; border-radius: 6px;
+  font-size: 13px; z-index: 300;
+  opacity: 0; transform: translateY(20px); transition: all .2s;
+  max-width: 480px;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { background: var(--brand); }
+.toast.success { background: var(--ink-900); }
+
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--ink-200); border-top-color: var(--brand);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; }
+  .main { padding: 20px; }
+  .numbers-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<aside class="sidebar">
+  <div class="brand">
+    <span class="dot"></span>SOLVIT
+    <span class="small">portal</span>
+  </div>
+
+  <div class="side-section">
+    <div class="side-label">Period</div>
+    <select class="period-select" id="periodSelect">
+      <option value="">— no periods yet —</option>
+    </select>
+  </div>
+
+  <div class="side-section">
+    <div class="side-label">Upload new</div>
+    <label class="upload-zone" id="uploadZone">
+      <div class="icon">⇪</div>
+      <div class="label">Add Excel</div>
+      <div class="hint">3 sheets, Zoho export</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    </label>
+    <input class="period-input" id="newPeriodLabel" type="text" placeholder="Label (e.g. April 2026)" style="margin-top: 8px;">
+  </div>
+
+  <div class="side-section">
+    <div class="side-label">Filter</div>
+    <div class="nav-item active" data-filter="all">All solvers <span class="num" id="cnt-all">—</span></div>
+    <div class="nav-item" data-filter="time">Time issues <span class="num" id="cnt-time">—</span></div>
+    <div class="nav-item" data-filter="submission">Submission issues <span class="num" id="cnt-submission">—</span></div>
+    <div class="nav-item" data-filter="rating">Rating issues <span class="num" id="cnt-rating">—</span></div>
+    <div class="nav-item" data-filter="strong">Strong performers <span class="num" id="cnt-strong">—</span></div>
+  </div>
+
+  <div class="side-footer">
+    Signed in as admin
+    <button class="small-btn" id="manageEmailsBtn">Manage solver emails</button>
+    <button class="small-btn" id="logoutBtn">Sign out</button>
+  </div>
+</aside>
+
+<main class="main">
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Performance <span class="accent">&</span> Coaching</h1>
+    <div class="page-subtitle" id="pageSubtitle">Loading...</div>
+  </div>
+  <div class="page-actions">
+    <button class="btn primary" id="bulkSendBtn" style="display:none">Email coaching to solvers missing target</button>
+  </div>
+</div>
+
+<div class="empty-state" id="emptyState" style="display:none">
+  <h2>No periods yet</h2>
+  <p>Upload your first Zoho export to begin. The portal expects a workbook with sheets named <strong>TOTAL VALUED</strong>, <strong>CLIENT RATING</strong>, and <strong>PENDING REASONS</strong>.</p>
+  <button class="cta" onclick="document.getElementById('fileInput').click()">Choose file</button>
+</div>
+
+<div id="dashboard" style="display:none">
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="label">Total solvers</div>
+      <div class="value tnum" id="kpi-solvers">—</div>
+      <div class="delta"><span id="kpi-solvers-sub">—</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Jobs assigned</div>
+      <div class="value tnum" id="kpi-assigned">—</div>
+      <div class="delta"><span id="kpi-assigned-sub">—</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Jobs initiated by solvers</div>
+      <div class="value tnum" id="kpi-initiated">—</div>
+      <div class="delta"><span id="kpi-initiated-sub">—</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Submission rate</div>
+      <div class="value tnum"><span id="kpi-sub">—</span><span class="unit">%</span></div>
+      <div class="delta"><span class="badge" id="kpi-sub-badge">—</span><span id="kpi-sub-sub">target 85%</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Response TAT</div>
+      <div class="value tnum"><span id="kpi-tat">—</span><span class="unit">h</span></div>
+      <div class="delta"><span class="badge" id="kpi-tat-badge">—</span><span id="kpi-tat-sub">target ≤ 4h</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Client rating</div>
+      <div class="value tnum"><span id="kpi-rating">—</span><span class="unit">/5</span></div>
+      <div class="delta"><span class="badge" id="kpi-rating-badge">—</span><span id="kpi-rating-sub">target ≥ 4.5</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Distribution across the team</h2>
+      <div class="section-sub">black = inside target, red = outside</div>
+    </div>
+    <div class="dist-grid">
+      <div class="dist-card">
+        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 4</div></div>
+        <canvas id="dist-tat"></canvas>
+      </div>
+      <div class="dist-card">
+        <div class="header"><div class="title">On-site TAT (min)</div><div class="target">target ≤ 30</div></div>
+        <canvas id="dist-onsite"></canvas>
+      </div>
+      <div class="dist-card">
+        <div class="header"><div class="title">Submission rate (%)</div><div class="target">target ≥ 85</div></div>
+        <canvas id="dist-sub"></canvas>
+      </div>
+      <div class="dist-card">
+        <div class="header"><div class="title">Client rating</div><div class="target">target ≥ 4.5</div></div>
+        <canvas id="dist-rating"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Solvers</h2>
+      <div class="section-sub">Click any row for the full scorecard, history, and coaching</div>
+    </div>
+    <div class="solvers-card">
+      <div class="solvers-toolbar">
+        <div class="search-box"><input type="text" id="searchBox" placeholder="Search solver name..."></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="solverTable">
+          <thead>
+            <tr>
+              <th data-sort="name">Solver</th>
+              <th data-sort="volume" style="text-align:right">Valued</th>
+              <th data-sort="assigned_count" style="text-align:right">Assigned</th>
+              <th data-sort="jobs_initiated" style="text-align:right">Initiated</th>
+              <th data-sort="response_tat" style="text-align:right">Response TAT</th>
+              <th data-sort="onsite_tat" style="text-align:right">On-site</th>
+              <th data-sort="submission_rate" style="text-align:right">Submission</th>
+              <th data-sort="rating" style="text-align:right">Rating</th>
+              <th>Focus</th>
+            </tr>
+          </thead>
+          <tbody id="solverBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</main>
+</div>
+
+<!-- Drawer -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-header">
+    <button class="drawer-close" id="drawerClose">×</button>
+    <h2 id="drawer-name">—</h2>
+    <div class="subtitle" id="drawer-subtitle">—</div>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<!-- Emails modal -->
+<div class="modal-backdrop" id="emailsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Solver emails</h2>
+        <div class="sub">Required before coaching emails can be sent. Add one row per solver.</div>
+      </div>
+      <button class="btn" id="closeEmailsModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="emailsList" class="email-list"><p style="color:var(--ink-500); text-align:center; padding:20px">Loading...</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="closeEmailsModalBottom">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+let periods = [];
+let currentPeriod = null;
+let currentFilter = "all";
+let currentSort = { col: "volume", dir: "desc" };
+let searchQuery = "";
+let charts = {};
+let solverEmails = {};   // { name: email }
+
+const TARGETS_DEFAULT = {
+  response_tat_hours_max: 4.0,
+  onsite_tat_hours_max: 0.5,
+  rating_min: 4.5,
+  submission_rate_min: 0.85,
+};
+
+const COLOR_OK = "#0E0E10";       // black for good
+const COLOR_OK_SOFT = "rgba(14,14,16,0.85)";
+const COLOR_BAD = "#D9252A";       // red for bad
+const COLOR_BAD_SOFT = "rgba(217,37,42,0.7)";
+const COLOR_WARN = "#E97A7C";      // muted red
+const COLOR_NEUTRAL = "#D4D4D8";   // grey for empty/insufficient
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function fmtHrs(h) {
+  if (h == null || isNaN(h)) return "—";
+  if (h < 1) return Math.round(h * 60) + " min";
+  return h.toFixed(1) + " h";
+}
+function fmtPct(p) {
+  if (p == null || isNaN(p)) return "—";
+  return (p * 100).toFixed(1) + "%";
+}
+function fmtRating(r) { return r == null || isNaN(r) ? "—" : r.toFixed(2); }
+function fmtInt(n) { return n == null ? "—" : Math.round(n).toLocaleString(); }
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (kind || "");
+  setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, { credentials: "include", ...opts });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("Not authenticated");
+  }
+  if (!res.ok) {
+    let detail = "Request failed";
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  if (opts.raw) return res;
+  return await res.json();
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+async function init() {
+  try { await apiFetch("/api/auth/me"); }
+  catch { return; }
+  await loadSolverEmails();
+  await loadPeriods();
+}
+
+async function loadSolverEmails() {
+  try {
+    const data = await apiFetch("/api/solver-emails");
+    solverEmails = {};
+    (data.emails || []).forEach(e => solverEmails[e.name] = e.email);
+  } catch (err) {
+    solverEmails = {};
+  }
+}
+
+async function loadPeriods() {
+  const data = await apiFetch("/api/periods");
+  periods = data.periods || [];
+  const sel = document.getElementById("periodSelect");
+  sel.innerHTML = "";
+  if (!periods.length) {
+    sel.innerHTML = '<option value="">— no periods yet —</option>';
+    document.getElementById("emptyState").style.display = "block";
+    document.getElementById("dashboard").style.display = "none";
+    document.getElementById("pageSubtitle").textContent = "Upload a workbook to begin.";
+    document.getElementById("bulkSendBtn").style.display = "none";
+    return;
+  }
+  periods.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.label;
+    sel.appendChild(opt);
+  });
+  sel.value = periods[0].id;
+  await loadPeriod(periods[0].id);
+}
+
+async function loadPeriod(periodId) {
+  if (!periodId) return;
+  document.getElementById("pageSubtitle").innerHTML = '<span class="spinner"></span> Loading...';
+  try {
+    currentPeriod = await apiFetch(`/api/periods/${periodId}`);
+    render();
+  } catch (err) {
+    toast("Failed to load period: " + err.message, "error");
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render() {
+  document.getElementById("emptyState").style.display = "none";
+  document.getElementById("dashboard").style.display = "block";
+  document.getElementById("bulkSendBtn").style.display = "inline-flex";
+
+  const t = currentPeriod.team;
+  document.getElementById("pageSubtitle").textContent =
+    `${currentPeriod.label} · ${currentPeriod.solvers.length} solvers · ${fmtInt(t.total_valuations)} valuations completed`;
+
+  renderKPIs();
+  renderDistributions();
+  renderTable();
+  renderSidebarCounts();
+}
+
+function renderKPIs() {
+  const t = currentPeriod.team;
+
+  document.getElementById("kpi-solvers").textContent = t.total_solvers;
+  document.getElementById("kpi-solvers-sub").textContent = `${fmtInt(t.total_valuations)} valuations`;
+
+  document.getElementById("kpi-assigned").textContent = fmtInt(t.total_jobs_assigned);
+  document.getElementById("kpi-assigned-sub").textContent =
+    `${fmtInt(t.total_jobs_pending)} still pending`;
+
+  document.getElementById("kpi-initiated").textContent = fmtInt(t.total_jobs_initiated_by_solvers);
+  const initiatedPct = t.total_jobs_assigned ? (t.total_jobs_initiated_by_solvers / t.total_jobs_assigned * 100) : 0;
+  document.getElementById("kpi-initiated-sub").textContent =
+    `${initiatedPct.toFixed(0)}% of assigned`;
+
+  setKPI("kpi-sub", t.team_submission_rate * 100, 85, false,
+    `team rate · median solver ${fmtPct(t.median_submission_rate)}`,
+    (v) => v.toFixed(1), [85, 75]);
+
+  setKPI("kpi-tat", t.median_response_tat_hrs, 4, true,
+    "median across solvers",
+    (v) => v.toFixed(1), [4, 8]);
+
+  setKPI("kpi-rating", t.avg_rating, 4.5, false,
+    "team mean rating",
+    (v) => v.toFixed(2), [4.5, 4.0]);
+}
+
+function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
+  const el = document.getElementById(id);
+  if (value == null) { el.textContent = "—"; return; }
+  el.textContent = fmt(value);
+  const badge = document.getElementById(`${id}-badge`);
+  let cls, txt;
+  if (lowerBetter) {
+    if (value <= thresholds[0]) { cls = "ok"; txt = "ON TARGET"; }
+    else if (value <= thresholds[1]) { cls = "warn"; txt = "OVER"; }
+    else { cls = "bad"; txt = "WELL OVER"; }
+  } else {
+    if (value >= thresholds[0]) { cls = "ok"; txt = "ON TARGET"; }
+    else if (value >= thresholds[1]) { cls = "warn"; txt = "CLOSE"; }
+    else { cls = "bad"; txt = "BELOW"; }
+  }
+  badge.className = `badge ${cls}`;
+  badge.textContent = txt;
+  document.getElementById(`${id}-sub`).textContent = subtitle;
+}
+
+function renderDistributions() {
+  const solvers = currentPeriod.solvers;
+  drawDistribution("dist-tat", ["0-2h", "2-4h", "4-8h", "8-24h", "24h+"],
+    solvers.map(s => s.median_response_tat_hrs),
+    [0, 2, 4, 8, 24, Infinity], [0, 4]);
+  drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
+    solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
+    [0, 15, 30, 45, 60, Infinity], [0, 30]);
+  drawDistribution("dist-sub", ["<70%", "70-80%", "80-85%", "85-95%", "95%+"],
+    solvers.map(s => s.submission_rate != null ? s.submission_rate * 100 : null),
+    [-Infinity, 70, 80, 85, 95, Infinity], [85, Infinity]);
+  drawDistribution("dist-rating", ["<3.5", "3.5-4", "4-4.5", "4.5-4.8", "4.8+"],
+    solvers.filter(s => s.n_ratings >= 3).map(s => s.avg_rating),
+    [-Infinity, 3.5, 4, 4.5, 4.8, Infinity], [4.5, Infinity]);
+}
+
+function drawDistribution(canvasId, labels, values, edges, targetRange) {
+  const counts = new Array(labels.length).fill(0);
+  values.forEach(v => {
+    if (v == null) return;
+    for (let i = 0; i < labels.length; i++) {
+      if (v >= edges[i] && v < edges[i + 1]) { counts[i] += 1; return; }
+    }
+  });
+  const colors = edges.slice(0, -1).map((lo, i) => {
+    const hi = edges[i + 1];
+    const inTarget = (lo >= targetRange[0] && hi <= targetRange[1] + 0.0001)
+                  || (hi > targetRange[0] && lo < targetRange[1]);
+    return inTarget ? COLOR_OK_SOFT : COLOR_BAD_SOFT;
+  });
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  if (charts[canvasId]) charts[canvasId].destroy();
+  charts[canvasId] = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0, borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} solver${ctx.parsed.y === 1 ? "" : "s"}` } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10, family: "Inter Tight" }, color: "#5A5A60" } },
+        y: { beginAtZero: true, grid: { color: "#E8E8EC", drawBorder: false },
+             ticks: { font: { size: 10 }, color: "#9A9A9F", stepSize: Math.max(1, Math.ceil(Math.max(...counts) / 4)) } }
+      }
+    }
+  });
+}
+
+function renderTable() {
+  let solvers = currentPeriod.solvers.slice();
+  if (currentFilter !== "all") {
+    solvers = solvers.filter(s => (s.focus_areas || []).includes(currentFilter));
+  }
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    solvers = solvers.filter(s => s.name.toLowerCase().includes(q));
+  }
+  const { col, dir } = currentSort;
+  const sortVal = (s) => {
+    switch (col) {
+      case "name": return s.name.toLowerCase();
+      case "volume": return s.volume;
+      case "assigned_count": return s.assigned_count;
+      case "jobs_initiated": return s.jobs_initiated || 0;
+      case "response_tat": return s.median_response_tat_hrs ?? Infinity;
+      case "onsite_tat": return s.avg_onsite_tat_hrs ?? Infinity;
+      case "submission_rate": return s.submission_rate ?? -1;
+      case "rating": return s.avg_rating ?? -1;
+      default: return 0;
+    }
+  };
+  solvers.sort((a, b) => {
+    const va = sortVal(a), vb = sortVal(b);
+    if (va < vb) return dir === "asc" ? -1 : 1;
+    if (va > vb) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+  document.querySelectorAll("thead th").forEach(th => {
+    th.classList.remove("sort-asc", "sort-desc");
+    if (th.dataset.sort === col) th.classList.add(dir === "asc" ? "sort-asc" : "sort-desc");
+  });
+  const tbody = document.getElementById("solverBody");
+  tbody.innerHTML = "";
+  for (const s of solvers) {
+    const tr = document.createElement("tr");
+    tr.dataset.name = s.name;
+    tr.innerHTML = `
+      <td class="name">${escapeHtml(s.name)}</td>
+      <td class="num" style="text-align:right">${fmtInt(s.volume)}</td>
+      <td class="num" style="text-align:right">${fmtInt(s.assigned_count)}</td>
+      <td class="num" style="text-align:right">${fmtInt(s.jobs_initiated || 0)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.median_response_tat_hrs, "h", 4, true, 16)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null, "m", 30, true, 60)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.submission_rate != null ? s.submission_rate * 100 : null, "%", 85, false, 100)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.avg_rating, "", 4.5, false, 5)}</td>
+      <td>${focusTags(s.focus_areas)}</td>
+    `;
+    tr.addEventListener("click", () => openDrawer(s));
+    tbody.appendChild(tr);
+  }
+  if (!solvers.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
+  }
+}
+
+function metricCell(value, unit, target, lowerBetter, scaleMax) {
+  if (value == null || isNaN(value)) return `<span class="num dim">—</span>`;
+  // Color rule: black if inside target, red if outside.
+  // For "lower better" metrics, > 1.5× target = pure red; close = muted red.
+  let color;
+  if (lowerBetter) {
+    color = value <= target ? COLOR_OK
+          : value <= target * 1.5 ? COLOR_WARN
+          : COLOR_BAD;
+  } else {
+    color = value >= target ? COLOR_OK
+          : value >= target * 0.75 ? COLOR_WARN
+          : COLOR_BAD;
+  }
+  const pct = Math.min(100, Math.max(2, (value / scaleMax) * 100));
+  const display = unit === "h" ? value.toFixed(1) + "h"
+                : unit === "m" ? Math.round(value) + "m"
+                : unit === "%" ? Math.round(value) + "%"
+                : value.toFixed(2);
+  return `<div class="metric-cell"><span class="bar"><span class="bar-fill" style="width:${pct}%; background:${color}"></span></span><span class="value" style="color:${color}">${display}</span></div>`;
+}
+
+function focusTags(areas) {
+  if (!areas || !areas.length) return `<span style="color:var(--ink-300); font-size:11px">—</span>`;
+  return areas.map(a => `<span class="focus-tag ${a}">${a}</span>`).join("");
+}
+
+function renderSidebarCounts() {
+  const all = currentPeriod.solvers;
+  document.getElementById("cnt-all").textContent = all.length;
+  document.getElementById("cnt-time").textContent = all.filter(s => (s.focus_areas || []).includes("time")).length;
+  document.getElementById("cnt-submission").textContent = all.filter(s => (s.focus_areas || []).includes("submission")).length;
+  document.getElementById("cnt-rating").textContent = all.filter(s => (s.focus_areas || []).includes("rating")).length;
+  document.getElementById("cnt-strong").textContent = all.filter(s => (s.focus_areas || []).includes("strong")).length;
+}
+
+/* ============================================================
+   DRAWER
+   ============================================================ */
+async function openDrawer(s) {
+  document.getElementById("drawer-name").textContent = s.name;
+  const focusParts = [];
+  if ((s.focus_areas || []).includes("strong")) focusParts.push("on target across the board");
+  else focusParts.push(s.focus_areas && s.focus_areas.length ? `focus: ${s.focus_areas.join(" + ")}` : "no flags");
+  document.getElementById("drawer-subtitle").textContent =
+    `${s.volume} valued · ${s.assigned_count} assigned · ${s.jobs_initiated || 0} initiated · ${focusParts.join(" · ")}`;
+
+  const t = currentPeriod.team;
+  const targets = currentPeriod.targets || TARGETS_DEFAULT;
+  const body = document.getElementById("drawerBody");
+  const currentEmail = solverEmails[s.name] || "";
+
+  body.innerHTML = `
+    <div class="drawer-section">
+      <h3>Performance vs target</h3>
+      <div class="scorecard-bars">
+        ${scoreBar("Response TAT", s.median_response_tat_hrs, t.median_response_tat_hrs, targets.response_tat_hours_max, true, 16, "h")}
+        ${scoreBar("On-site TAT", (s.avg_onsite_tat_hrs ?? 0) * 60, (t.avg_onsite_tat_hrs ?? 0) * 60, targets.onsite_tat_hours_max * 60, true, 60, "m")}
+        ${scoreBar("Submission rate", (s.submission_rate ?? 0) * 100, (t.median_submission_rate ?? 0) * 100, targets.submission_rate_min * 100, false, 100, "%")}
+        ${scoreBar("Client rating", s.avg_rating, t.avg_rating, targets.rating_min, false, 5, "")}
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h3>The numbers</h3>
+      <div class="numbers-grid">
+        <div class="numbox"><div class="lbl">Valued</div><div class="val tnum">${fmtInt(s.volume)}</div><div class="sub">team median ${fmtInt(t.median_volume)}</div></div>
+        <div class="numbox"><div class="lbl">Assigned</div><div class="val tnum">${fmtInt(s.assigned_count)}</div><div class="sub">${s.pending_count} pending</div></div>
+        <div class="numbox"><div class="lbl">Initiated</div><div class="val tnum">${fmtInt(s.jobs_initiated || 0)}</div><div class="sub">${s.assigned_count ? Math.round((s.jobs_initiated||0)/s.assigned_count*100) : 0}% of assigned</div></div>
+        <div class="numbox"><div class="lbl">Submission rate</div><div class="val tnum">${fmtPct(s.submission_rate)}</div><div class="sub">${s.valued_count} of ${s.assigned_count}</div></div>
+        <div class="numbox"><div class="lbl">Response TAT (median)</div><div class="val tnum">${fmtHrs(s.median_response_tat_hrs)}</div><div class="sub">mean ${fmtHrs(s.avg_response_tat_hrs)}</div></div>
+        <div class="numbox"><div class="lbl">On-site TAT (avg)</div><div class="val tnum">${fmtHrs(s.avg_onsite_tat_hrs)}</div><div class="sub">median ${fmtHrs(s.median_onsite_tat_hrs)}</div></div>
+        <div class="numbox"><div class="lbl">Client rating</div><div class="val tnum">${fmtRating(s.avg_rating)}<span style="font-size:14px; color:var(--ink-300)"> /5</span></div><div class="sub">${s.n_ratings} rating${s.n_ratings === 1 ? "" : "s"}</div></div>
+        <div class="numbox"><div class="lbl">Stuck jobs (>72h)</div><div class="val tnum">${s.stuck_job_count}</div><div class="sub">${fmtPct(s.stuck_job_rate)} of approved</div></div>
+        <div class="numbox"><div class="lbl">Approval rate</div><div class="val tnum">${fmtPct(s.approval_rate)}</div><div class="sub">${fmtInt(s.total_attempts)} attempts</div></div>
+      </div>
+    </div>
+
+    <div class="drawer-section" id="trend-section">
+      <h3>History — last 6 periods</h3>
+      <div id="trend-charts">Loading history...</div>
+    </div>
+
+    ${renderCoachingBlocks(s)}
+
+    ${s.pending_count > 0 && s.extra && s.extra.top_pending_reasons && s.extra.top_pending_reasons.length ? `
+    <div class="drawer-section">
+      <h3>Top pending reasons</h3>
+      <div class="pending-reasons">
+        ${s.extra.top_pending_reasons.map(([r, c]) => `
+          <div class="pending-row">
+            <span class="reason">${escapeHtml(r)}</span>
+            <span class="count">${c}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>` : ""}
+
+    <div class="drawer-section">
+      <h3>Actions</h3>
+      <div class="${currentEmail ? 'email-status-line' : 'email-status-line warn'}">
+        <span>${currentEmail ? `Email on file:` : `No email on file —`}</span>
+        <input type="email" id="solverEmailInput" value="${escapeHtml(currentEmail)}" placeholder="solver@example.com">
+        <button class="btn" onclick="saveSolverEmail('${escapeHtml(s.name).replace(/'/g, "\\'")}')" style="padding:4px 12px; font-size:11px">Save</button>
+      </div>
+      <div class="drawer-cta">
+        <button class="btn primary" onclick="downloadReport('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Download Word doc</button>
+        <button class="btn dark" id="emailSolverBtn" onclick="emailSolver('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Email coaching to solver</button>
+        <button class="btn" onclick="copyIntro('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Copy intro text</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawerBackdrop").classList.add("open");
+  document.querySelectorAll("tbody tr").forEach(tr => {
+    tr.classList.toggle("selected", tr.dataset.name === s.name);
+  });
+
+  loadHistory(s.name);
+}
+
+async function loadHistory(name) {
+  try {
+    const data = await apiFetch(`/api/solvers/${encodeURIComponent(name)}/history`);
+    renderHistoryCharts(data.periods);
+  } catch (err) {
+    document.getElementById("trend-charts").innerHTML = `<p style="color:var(--ink-500); font-size:13px">No history available.</p>`;
+  }
+}
+
+function renderHistoryCharts(history) {
+  const container = document.getElementById("trend-charts");
+  if (!history || history.length < 2) {
+    container.innerHTML = `<p style="color:var(--ink-500); font-size:13px">Need at least 2 periods to show trends. Upload another month to see history here.</p>`;
+    return;
+  }
+  const recent = history.slice(-6);
+  const labels = recent.map(p => p.period_label);
+  const metrics = [
+    ["Response TAT (h)", recent.map(p => p.median_response_tat_hrs)],
+    ["On-site TAT (min)", recent.map(p => p.avg_onsite_tat_hrs ? p.avg_onsite_tat_hrs * 60 : null)],
+    ["Submission rate (%)", recent.map(p => p.submission_rate != null ? p.submission_rate * 100 : null)],
+    ["Client rating", recent.map(p => p.avg_rating)],
+  ];
+  container.innerHTML = `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px">${
+    metrics.map((_, i) => `
+      <div class="trend-card">
+        <div class="head"><div class="title">${_[0]}</div><div class="legend">${recent.length} periods</div></div>
+        <div style="height:120px; position:relative"><canvas id="trend-${i}"></canvas></div>
+      </div>
+    `).join("")
+  }</div>`;
+  metrics.forEach(([title, values], i) => {
+    const ctx = document.getElementById(`trend-${i}`).getContext("2d");
+    new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          data: values, borderColor: COLOR_OK, backgroundColor: "rgba(14,14,16,0.05)",
+          tension: 0.25, fill: false, pointRadius: 4, pointBackgroundColor: COLOR_OK,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { displayColors: false, callbacks: { label: (c) => c.parsed.y != null ? c.parsed.y.toFixed(2) : "—" } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: "#5A5A60" } },
+          y: { grid: { color: "#E8E8EC" }, ticks: { font: { size: 9 }, color: "#9A9A9F" } }
+        }
+      }
+    });
+  });
+}
+
+function scoreBar(label, value, teamValue, target, lowerBetter, scaleMax, unit) {
+  if (value == null || isNaN(value)) {
+    return `<div class="scorebar"><div class="label">${label}</div><div class="track"><div class="fill" style="width:0"></div></div><div class="num" style="color:var(--ink-300)">—</div></div>`;
+  }
+  let color;
+  if (lowerBetter) {
+    color = value <= target ? COLOR_OK : value <= target * 1.5 ? COLOR_WARN : COLOR_BAD;
+  } else {
+    color = value >= target ? COLOR_OK : value >= target * 0.75 ? COLOR_WARN : COLOR_BAD;
+  }
+  const scaleUpper = Math.max(scaleMax, value * 1.1, target * 1.5);
+  const fillPct = Math.min(100, (value / scaleUpper) * 100);
+  const targetPct = Math.min(100, (target / scaleUpper) * 100);
+  const teamPct = teamValue != null ? Math.min(100, (teamValue / scaleUpper) * 100) : null;
+  const display = unit === "h" ? value.toFixed(1) + "h"
+                : unit === "m" ? Math.round(value) + "m"
+                : unit === "%" ? Math.round(value) + "%"
+                : value.toFixed(2);
+  return `<div class="scorebar"><div class="label">${label}</div><div class="track"><div class="fill" style="width:${fillPct}%; background:${color}"></div><div class="target-mark" style="left:${targetPct}%"></div>${teamPct != null ? `<div class="team-mark" style="left:${teamPct}%"></div>` : ""}</div><div class="num" style="color:${color}">${display}</div></div>`;
+}
+
+function renderCoachingBlocks(s) {
+  const c = s.classifications || {};
+  const modules = s.training_modules || [];
+  if (modules.length === 0 && c.rating === "needs_work") {
+    return `
+      <div class="drawer-section">
+        <h3>Coaching focus</h3>
+        <div class="coaching-block">
+          <h4>Client rating conversation</h4>
+          <p>Rating is below target (<strong>${fmtRating(s.avg_rating)}</strong> from ${s.n_ratings} ratings). This isn't a workflow issue — it's about how visits land with clients.</p>
+          <p><strong>Team lead to follow up directly</strong> on greeting, explanation, and closing habits.</p>
+        </div>
+      </div>`;
+  }
+  const blocks = modules.map(mod => {
+    if (mod === "time") return timeBlock(s);
+    if (mod === "submission") return submissionBlock(s);
+    if (mod === "strong") return strongBlock(s);
+    return "";
+  }).join("");
+  if (!blocks) return "";
+  return `<div class="drawer-section"><h3>Coaching focus</h3>${blocks}</div>`;
+}
+
+function timeBlock(s) {
+  return `
+    <div class="coaching-block time">
+      <h4>Working Faster — Time</h4>
+      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 4-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
+      <p><strong>Three habits that work:</strong></p>
+      <ol>
+        <li>Accept or decline within <strong>5 minutes</strong> of dispatch</li>
+        <li>Same on-site flow every time: <strong>Photos → Exterior → Interior → Submit</strong></li>
+        <li>If a job hasn't moved in <strong>24 hours</strong>, close it or escalate</li>
+      </ol>
+      <p style="color:var(--ink-500); font-style:italic">This week: pick one stuck job from last week. What stopped it?</p>
+    </div>`;
+}
+
+function submissionBlock(s) {
+  const reasons = (s.extra && s.extra.top_pending_reasons) || [];
+  const reasonsStr = reasons.length ? reasons.map(([r, c]) => `${escapeHtml(r)} (${c})`).join("; ") : "none recorded";
+  return `
+    <div class="coaching-block submission">
+      <h4>Closing More Jobs — Submission Rate</h4>
+      <p>Submitted <strong>${s.valued_count}</strong> of <strong>${s.assigned_count}</strong> assigned (<strong>${fmtPct(s.submission_rate)}</strong>) against an 85% target.</p>
+      <p>Top pending reasons: ${reasonsStr}.</p>
+      <p><strong>Three habits that close the gap:</strong></p>
+      <ol>
+        <li>Before traveling, do a <strong>confirmation call</strong> — kills "No documents" pendings</li>
+        <li>For "Not picking" jobs, try once more at a <strong>different hour</strong></li>
+        <li>Set a <strong>specific</strong> next-attempt time on pendings</li>
+      </ol>
+      <p style="color:var(--ink-500); font-style:italic">This week: for every pending, write the next-attempt time on the spot.</p>
+    </div>`;
+}
+
+function strongBlock(s) {
+  return `
+    <div class="coaching-block strong">
+      <h4>Keep Going</h4>
+      <p>On target across the board. The boring fundamentals — pre-visit prep, photo discipline, client greeting — are what got you here.</p>
+      <p><strong>Where to grow next:</strong> take harder jobs; mentor newer solvers; flag patterns you notice.</p>
+      <p style="color:var(--ink-500); font-style:italic">Strong work this month. Keep it up.</p>
+    </div>`;
+}
+
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("open");
+  document.getElementById("drawerBackdrop").classList.remove("open");
+  document.querySelectorAll("tbody tr").forEach(tr => tr.classList.remove("selected"));
+}
+
+/* ============================================================
+   ACTIONS — download, copy, email
+   ============================================================ */
+async function downloadReport(name) {
+  if (!currentPeriod) return;
+  try {
+    const res = await fetch(
+      `/api/periods/${currentPeriod.id}/solvers/${encodeURIComponent(name)}/report`,
+      { method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intro: null }) }
+    );
+    if (!res.ok) throw new Error("Report generation failed");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name.replace(/[^\w]+/g, "_")}_coaching.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Downloaded ${name}.docx`, "success");
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  }
+}
+
+function copyIntro(name) {
+  const s = currentPeriod.solvers.find(x => x.name === name);
+  if (!s) return;
+  const first = name.split(" ")[0];
+  const focus = s.focus_areas || [];
+  let intro;
+  if (focus.includes("strong")) {
+    intro = `Hi ${first} — ${s.volume} valuations this month and ${fmtRating(s.avg_rating)}/5 client rating. You're on target across the board. Keep going.`;
+  } else if (focus.length === 1 && focus[0] === "time") {
+    intro = `Hi ${first} — ${s.volume} valuations this month. Response TAT (median ${fmtHrs(s.median_response_tat_hrs)}) is the area to focus on. Concrete steps below — you've got this.`;
+  } else if (focus.length === 1 && focus[0] === "submission") {
+    intro = `Hi ${first} — your TAT and quality numbers are strong. Submission rate is at ${fmtPct(s.submission_rate)} (target 85%) with ${s.pending_count} pendings to work through. Three habits below to close the gap.`;
+  } else {
+    intro = `Hi ${first} — ${s.volume} valuations this month. Areas to focus on: ${focus.join(", ")}. Concrete steps below.`;
+  }
+  navigator.clipboard.writeText(intro).then(() => toast("Intro copied to clipboard", "success"));
+}
+
+async function saveSolverEmail(name) {
+  const email = document.getElementById("solverEmailInput").value.trim();
+  if (!email) { toast("Enter an email first", "error"); return; }
+  try {
+    await apiFetch(`/api/solver-emails/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    solverEmails[name] = email;
+    toast(`Email saved for ${name}`, "success");
+    // Reload the drawer to reflect change in the UI
+    const s = currentPeriod.solvers.find(x => x.name === name);
+    if (s) openDrawer(s);
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  }
+}
+
+async function emailSolver(name) {
+  if (!currentPeriod) return;
+  const btn = document.getElementById("emailSolverBtn");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Sending...'; }
+  try {
+    const res = await fetch(`/api/periods/${currentPeriod.id}/solvers/${encodeURIComponent(name)}/email`, {
+      method: "POST", credentials: "include",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Send failed" }));
+      throw new Error(data.detail);
+    }
+    const result = await res.json();
+    toast(`Email sent to ${result.detail || name}`, "success");
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "Email coaching to solver"; }
+  }
+}
+
+async function bulkSendCoachingEmails() {
+  if (!currentPeriod) return;
+  if (!confirm(
+    "Send coaching emails to every solver who missed a target this period?\n\n" +
+    "Strong performers will be skipped. Solvers without an email on file will be reported."
+  )) return;
+
+  const btn = document.getElementById("bulkSendBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Sending emails...';
+
+  try {
+    const res = await fetch(`/api/periods/${currentPeriod.id}/send-coaching-emails`, {
+      method: "POST", credentials: "include",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Failed" }));
+      throw new Error(data.detail);
+    }
+    const result = await res.json();
+    const s = result.summary;
+    let msg = `Sent ${s.sent} email${s.sent === 1 ? "" : "s"}.`;
+    if (s.failed) msg += ` ${s.failed} failed.`;
+    if (s.skipped_no_email) msg += ` ${s.skipped_no_email} skipped (no email on file).`;
+    if (s.skipped_strong) msg += ` ${s.skipped_strong} strong performers skipped.`;
+    toast(msg, s.failed > 0 ? "error" : "success");
+
+    // If some had no email, drop the user into the emails modal so they can add them
+    if (s.skipped_no_email > 0) {
+      setTimeout(() => openEmailsModal(), 1000);
+    }
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "Email coaching to solvers missing target";
+  }
+}
+
+/* ============================================================
+   EMAILS MODAL
+   ============================================================ */
+async function openEmailsModal() {
+  await loadSolverEmails();
+  // Build the list. Show all solvers from the current period + any with stored emails
+  const namesFromCurrent = currentPeriod ? currentPeriod.solvers.map(s => s.name) : [];
+  const allNames = Array.from(new Set([...namesFromCurrent, ...Object.keys(solverEmails)])).sort();
+
+  const list = document.getElementById("emailsList");
+  if (!allNames.length) {
+    list.innerHTML = `<p style="color:var(--ink-500); text-align:center; padding:20px">No solvers yet. Upload a period first.</p>`;
+  } else {
+    list.innerHTML = allNames.map(name => `
+      <div class="email-row">
+        <div class="name">${escapeHtml(name)}</div>
+        <input type="email" id="email-input-${escapeHtml(name).replace(/[^\w]/g, '_')}" value="${escapeHtml(solverEmails[name] || "")}" placeholder="email@example.com">
+        <button class="save-btn" onclick="saveEmailInModal('${escapeHtml(name).replace(/'/g, "\\'")}')">Save</button>
+      </div>
+    `).join("");
+  }
+  document.getElementById("emailsModal").classList.add("open");
+}
+
+async function saveEmailInModal(name) {
+  const id = `email-input-${name.replace(/[^\w]/g, '_')}`;
+  const email = document.getElementById(id).value.trim();
+  if (!email) {
+    // Empty = delete
+    try {
+      await apiFetch(`/api/solver-emails/${encodeURIComponent(name)}`, { method: "DELETE" });
+      delete solverEmails[name];
+      toast(`Removed email for ${name}`, "success");
+    } catch (err) { toast("Error: " + err.message, "error"); }
+    return;
+  }
+  try {
+    await apiFetch(`/api/solver-emails/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    solverEmails[name] = email;
+    toast(`Saved email for ${name}`, "success");
+  } catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+function closeEmailsModal() {
+  document.getElementById("emailsModal").classList.remove("open");
+}
+
+/* ============================================================
+   UPLOADS
+   ============================================================ */
+const fileInput = document.getElementById("fileInput");
+document.getElementById("uploadZone").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const label = document.getElementById("newPeriodLabel").value.trim();
+  if (!label) {
+    toast("Enter a period label first (e.g. April 2026)", "error");
+    return;
+  }
+  const form = new FormData();
+  form.append("file", f);
+  form.append("label", label);
+
+  toast("Uploading & analysing...");
+  try {
+    const res = await fetch("/api/uploads", {
+      method: "POST", credentials: "include", body: form,
+    });
+    if (res.status === 401) { window.location.href = "/login"; return; }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Upload failed" }));
+      throw new Error(data.detail);
+    }
+    const result = await res.json();
+    toast(`Loaded ${result.total_solvers} solvers for "${result.label}"`, "success");
+    document.getElementById("newPeriodLabel").value = "";
+    fileInput.value = "";
+    await loadPeriods();
+    document.getElementById("periodSelect").value = result.period_id;
+    await loadPeriod(result.period_id);
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  }
+});
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+document.getElementById("periodSelect").addEventListener("change", (e) => {
+  if (e.target.value) loadPeriod(parseInt(e.target.value, 10));
+});
+
+document.querySelectorAll(".nav-item").forEach(item => {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach(i => i.classList.remove("active"));
+    item.classList.add("active");
+    currentFilter = item.dataset.filter;
+    if (currentPeriod) renderTable();
+  });
+});
+
+document.getElementById("searchBox").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  if (currentPeriod) renderTable();
+});
+
+document.querySelectorAll("thead th").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.dataset.sort;
+    if (!col) return;
+    if (currentSort.col === col) currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
+    else { currentSort.col = col; currentSort.dir = col === "name" ? "asc" : "desc"; }
+    if (currentPeriod) renderTable();
+  });
+});
+
+document.getElementById("drawerClose").addEventListener("click", closeDrawer);
+document.getElementById("drawerBackdrop").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeDrawer();
+    closeEmailsModal();
+  }
+});
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try { await apiFetch("/api/auth/logout", { method: "POST" }); }
+  catch {}
+  window.location.href = "/login";
+});
+
+document.getElementById("manageEmailsBtn").addEventListener("click", openEmailsModal);
+document.getElementById("closeEmailsModal").addEventListener("click", closeEmailsModal);
+document.getElementById("closeEmailsModalBottom").addEventListener("click", closeEmailsModal);
+document.getElementById("bulkSendBtn").addEventListener("click", bulkSendCoachingEmails);
+
+init();
+</script>
+</body>
+</html>

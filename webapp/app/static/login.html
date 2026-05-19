@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solvit Portal · Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink-900: #0E0E10;
+  --ink-700: #2A2A2E;
+  --ink-500: #5A5A60;
+  --ink-300: #9A9A9F;
+  --ink-200: #D4D4D8;
+  --ink-100: #E8E8EC;
+  --paper:   #FAFAF7;
+  --brand:      #D9252A;
+  --brand-dark: #8C161A;
+  --brand-soft: #FDE5E6;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Inter Tight", system-ui, sans-serif;
+  background: var(--ink-900);
+  color: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.005em;
+}
+.card {
+  background: var(--paper);
+  color: var(--ink-900);
+  border-radius: 16px;
+  padding: 40px 44px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.5);
+}
+.brand {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.brand .dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.18);
+}
+.brand .small {
+  font-family: "Inter Tight", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-500);
+}
+h1 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  margin: 24px 0 6px;
+}
+p.lede { font-size: 14px; color: var(--ink-500); margin: 0 0 28px; }
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-700);
+  margin-bottom: 6px;
+}
+input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--ink-200);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #fff;
+  margin-bottom: 16px;
+  transition: border-color .12s;
+}
+input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.12);
+}
+button {
+  width: 100%;
+  padding: 13px;
+  background: var(--ink-900);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s;
+  margin-top: 4px;
+}
+button:hover { background: var(--brand); }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+.error {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.error.show { display: block; }
+.footer {
+  margin-top: 28px;
+  font-size: 11px;
+  color: var(--ink-300);
+  text-align: center;
+  line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<form class="card" id="loginForm">
+  <div class="brand">
+    <span class="dot"></span>SOLVIT<span class="small">portal</span>
+  </div>
+  <h1>Sign in</h1>
+  <p class="lede">Admin access only.</p>
+
+  <div class="error" id="error"></div>
+
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+  <button type="submit" id="submitBtn">Sign in</button>
+
+  <div class="footer">Performance & Coaching Portal</div>
+</form>
+
+<script>
+const form = document.getElementById("loginForm");
+const errorBox = document.getElementById("error");
+const submitBtn = document.getElementById("submitBtn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errorBox.classList.remove("show");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Signing in...";
+
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      }),
+    });
+    if (res.ok) {
+      window.location.href = "/";
+    } else {
+      const data = await res.json().catch(() => ({ detail: "Login failed" }));
+      errorBox.textContent = data.detail || "Login failed";
+      errorBox.classList.add("show");
+    }
+  } catch (err) {
+    errorBox.textContent = "Network error. Is the server running?";
+    errorBox.classList.add("show");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Sign in";
+  }
+});
+</script>
+</body>
+</html>

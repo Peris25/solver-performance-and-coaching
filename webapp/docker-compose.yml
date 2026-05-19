@@ -1,0 +1,54 @@
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — the production database.
+  # In dev you can omit this and use SQLite (set DATABASE_URL=sqlite:///./data/portal.db).
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-solvit}
+      POSTGRES_USER: ${POSTGRES_USER:-solvit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solvit} -d ${POSTGRES_DB:-solvit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Web app — FastAPI + gunicorn behind nothing (add a reverse proxy in prod
+  # if you want TLS termination; Render/Railway handle this for you).
+  # ---------------------------------------------------------------------------
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-solvit}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-solvit}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?Set ADMIN_PASSWORD_HASH in .env}
+      SESSION_HOURS: ${SESSION_HOURS:-24}
+      WORKERS: ${WORKERS:-2}
+      UPLOAD_DIR: /app/uploads
+      # SMTP
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Solvit Operations}
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      - "${PORT:-8000}:8000"
+
+volumes:
+  pg_data:
+  uploads:
