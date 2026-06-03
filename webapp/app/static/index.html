@@ -907,9 +907,7 @@ function renderKPIs() {
     (v) => v.toFixed(1), [85, 75]);
 
   setKPI("kpi-tat", t.median_response_tat_hrs, 10, true, "median across solvers", (v) => v.toFixed(1), [10, 15]);
-    "median across solvers",
-    (v) => v.toFixed(1), [4, 8]);
-
+   
   setKPI("kpi-rating", t.avg_rating, 4.5, false,
     "team mean rating",
     (v) => v.toFixed(2), [4.5, 4.0]);
