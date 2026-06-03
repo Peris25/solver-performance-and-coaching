@@ -662,7 +662,7 @@ td.num.dim { color: var(--ink-300); }
     </div>
     <div class="dist-grid">
       <div class="dist-card">
-        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 4</div></div>
+        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 10</div></div>
         <canvas id="dist-tat"></canvas>
       </div>
       <div class="dist-card">
@@ -760,7 +760,7 @@ let charts = {};
 let solverEmails = {};   // { name: email }
 
 const TARGETS_DEFAULT = {
-  response_tat_hours_max: 4.0,
+  response_tat_hours_max: 10.0,
   onsite_tat_hours_max: 0.5,
   rating_min: 4.5,
   submission_rate_min: 0.85,
@@ -906,7 +906,7 @@ function renderKPIs() {
     `team rate · median solver ${fmtPct(t.median_submission_rate)}`,
     (v) => v.toFixed(1), [85, 75]);
 
-  setKPI("kpi-tat", t.median_response_tat_hrs, 4, true,
+  setKPI("kpi-tat", t.median_response_tat_hrs, 10, true, "median across solvers", (v) => v.toFixed(1), [10, 15]);
     "median across solvers",
     (v) => v.toFixed(1), [4, 8]);
 
@@ -937,9 +937,9 @@ function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
 
 function renderDistributions() {
   const solvers = currentPeriod.solvers;
-  drawDistribution("dist-tat", ["0-2h", "2-4h", "4-8h", "8-24h", "24h+"],
-    solvers.map(s => s.median_response_tat_hrs),
-    [0, 2, 4, 8, 24, Infinity], [0, 4]);
+  drawDistribution("dist-tat", ["0-5h", "5-10h", "10-15h", "15-24h", "24h+"],
+     solvers.map(s => s.median_response_tat_hrs),
+     [0, 5, 10, 15, 24, Infinity], [0, 10]);
   drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
     solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
     [0, 15, 30, 45, 60, Infinity], [0, 30]);
@@ -1271,7 +1271,7 @@ function timeBlock(s) {
   return `
     <div class="coaching-block time">
       <h4>Working Faster — Time</h4>
-      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 4-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
+      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 10-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
       <p><strong>Three habits that work:</strong></p>
       <ol>
         <li>Accept or decline within <strong>5 minutes</strong> of dispatch</li>
