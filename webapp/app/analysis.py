@@ -18,7 +18,7 @@ import pandas as pd
 
 
 TARGETS = {
-    "response_tat_hours_max": 4.0,
+    "response_tat_hours_max": 10.0,
     "onsite_tat_hours_max": 0.5,
     "rating_min": 4.5,
     "volume_min_monthly": 60,
@@ -53,16 +53,16 @@ def classify_solver(stats: dict, team: dict) -> dict:
     """
     out = {}
 
-    # ---- Response TAT (lower is better, target ≤ 4h) ----
+    # ---- Response TAT / full basket journey (lower is better, target ≤ 10h) ----
     rtat_med = stats.get("median_response_tat_hrs")
     if rtat_med is None or pd.isna(rtat_med):
         out["response_tat"] = "insufficient_data"
-    elif rtat_med <= TARGETS["response_tat_hours_max"] * 0.5:
+    elif rtat_med <= TARGETS["response_tat_hours_max"] * 0.5:   # ≤ 5h
         out["response_tat"] = "strong"
-    elif rtat_med <= TARGETS["response_tat_hours_max"]:
+    elif rtat_med <= TARGETS["response_tat_hours_max"]:          # ≤ 10h
         out["response_tat"] = "on_track"
-    elif rtat_med <= TARGETS["response_tat_hours_max"] * 1.5:
-        out["response_tat"] = "on_track"   # close but over — same as before
+    elif rtat_med <= TARGETS["response_tat_hours_max"] * 1.5:   # ≤ 15h — close but over
+        out["response_tat"] = "on_track"
     else:
         out["response_tat"] = "needs_work"
 
