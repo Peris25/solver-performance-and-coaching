@@ -119,3 +119,54 @@ class EmailSendLog(Base):
     focus_areas = Column(JSON, nullable=False, default=list)  # snapshot of why they were emailed
 
     period = relationship("Period")
+
+
+class Solver(Base):
+    """Registered solver — name, region, location, active flag.
+
+    This is the canonical list of solvers (loaded from SOLVERS_REGIONAL_LIST.xlsx
+    on first run, then managed by the admin through the UI).
+
+    Snapshot data (from Zoho uploads) gets matched to these registered solvers
+    by name to enable regional analysis.
+    """
+    __tablename__ = "solvers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(128), unique=True, nullable=False, index=True)
+    region = Column(String(64), nullable=False, index=True)
+    location = Column(String(128), nullable=True)
+    active = Column(Integer, default=1, nullable=False)  # 1 = active, 0 = archived
+    is_lead = Column(Integer, default=0, nullable=False)  # 1 = regional lead
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
+                        nullable=False)
+
+
+class RegionSnapshot(Base):
+    """Per-region aggregation for a period. Cached so the dashboard doesn't
+    re-aggregate on every request."""
+    __tablename__ = "region_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period_id = Column(Integer, ForeignKey("periods.id"), nullable=False, index=True)
+    region = Column(String(64), nullable=False, index=True)
+
+    solver_count = Column(Integer, default=0)
+    total_assigned = Column(Integer, default=0)
+    total_valued = Column(Integer, default=0)
+    total_pending = Column(Integer, default=0)
+    total_jobs_initiated = Column(Integer, default=0)
+    jobs_per_solver = Column(Float, nullable=True)
+    submission_rate = Column(Float, nullable=True)
+    avg_response_tat_hrs = Column(Float, nullable=True)
+    avg_onsite_tat_hrs = Column(Float, nullable=True)
+    avg_rating = Column(Float, nullable=True)
+    staffing = Column(String(32), nullable=True)        # "overloaded" | "balanced" | "under_utilised"
+    performance = Column(String(32), nullable=True)     # "strong" | "on_track" | "needs_improvement" | "insufficient_data"
+    needs_coaching_count = Column(Integer, default=0)
+    strong_count = Column(Integer, default=0)
+    locations = Column(JSON, nullable=False, default=list)
+    solver_names = Column(JSON, nullable=False, default=list)
+
+    period = relationship("Period")
