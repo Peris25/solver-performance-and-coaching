@@ -441,9 +441,20 @@ def _short_headline(stats, team, targets):
 
 def _time_block(doc, stats, targets):
     _heading(doc, "Working Faster — Time", size=13, space_before=10, space_after=4)
+
+    # Format the response TAT target nicely: "10-hour", "9.5-hour", or "9h 30min"
+    rtat_target = targets.get("response_tat_hours_max", 9.5)
+    if rtat_target == int(rtat_target):
+        rtat_label = f"{int(rtat_target)}-hour"
+    elif (rtat_target * 60) % 60 == 30:
+        rtat_label = f"{int(rtat_target)}h 30min"
+    else:
+        rtat_label = f"{rtat_target:.1f}-hour"
+
+    tgt_min = int(targets.get("onsite_tat_hours_max", 0.5) * 60)
     _para_with_inline(doc,
-        f"Median response TAT **{fmt_hrs(stats['median_response_tat_hrs'])}** against a 4-hour target. "
-        f"On-site **{fmt_hrs(stats['avg_onsite_tat_hrs'])}** against 30 minutes.")
+        f"Median response TAT **{fmt_hrs(stats['median_response_tat_hrs'])}** against a {rtat_label} target. "
+        f"On-site **{fmt_hrs(stats['avg_onsite_tat_hrs'])}** against {tgt_min} minutes.")
 
     # Diagram: two clocks showing target zones and where the solver sits
     png = time_two_clocks_png(stats, targets)
@@ -545,9 +556,104 @@ def _strong_block(doc):
 
 # --- main builder ---------------------------------------------------------
 
+def _format_metric_delta(metric_key: str, m: dict) -> str:
+    """Format a single metric's previous → current with direction arrow."""
+    prev = m.get("previous")
+    curr = m.get("current")
+    direction = m.get("direction", "na")
+    if prev is None or curr is None:
+        return ""
+
+    if metric_key == "response_tat":
+        prev_s = f"{prev:.1f}h"; curr_s = f"{curr:.1f}h"
+        label = "Response TAT"
+    elif metric_key == "onsite_tat":
+        prev_s = f"{prev*60:.0f}min"; curr_s = f"{curr*60:.0f}min"
+        label = "On-site"
+    elif metric_key == "submission_rate":
+        prev_s = f"{prev*100:.0f}%"; curr_s = f"{curr*100:.0f}%"
+        label = "Submission rate"
+    elif metric_key == "rating":
+        prev_s = f"{prev:.2f}"; curr_s = f"{curr:.2f}"
+        label = "Client rating"
+    elif metric_key == "volume":
+        prev_s = f"{int(prev)}"; curr_s = f"{int(curr)}"
+        label = "Valued"
+    elif metric_key == "assigned":
+        prev_s = f"{int(prev)}"; curr_s = f"{int(curr)}"
+        label = "Assigned"
+    else:
+        prev_s = str(prev); curr_s = str(curr)
+        label = metric_key
+
+    arrow = "↑" if direction == "improved" else ("↓" if direction == "worsened" else "→")
+    return f"**{label}**: {prev_s} {arrow} {curr_s}"
+
+
+def _comparison_block(doc, comparison: dict, previous_period_label: str):
+    """Render the vs-previous-period block.
+
+    Shows the headline + 3-5 key metric deltas with arrows.
+    """
+    _heading(doc, f"How this compares to {previous_period_label}",
+             size=13, space_before=10, space_after=4)
+
+    headline = comparison.get("headline") or "broadly steady"
+    # Capitalize only the first letter, preserve acronyms like "TAT"
+    if headline:
+        headline_display = headline[0].upper() + headline[1:]
+    else:
+        headline_display = "Broadly steady"
+    _para_with_inline(doc, f"*{headline_display}.*", italic=False, color=GREY)
+
+    # Show all non-NA metric deltas
+    metrics = comparison.get("metrics", {})
+    interesting_keys = ["response_tat", "submission_rate", "volume", "assigned", "rating", "onsite_tat"]
+
+    lines = []
+    for key in interesting_keys:
+        m = metrics.get(key, {})
+        if m.get("direction") in ("improved", "worsened"):
+            text = _format_metric_delta(key, m)
+            if text:
+                lines.append((text, m["direction"]))
+
+    if not lines:
+        _para_with_inline(doc, "All metrics broadly unchanged from the previous period.",
+                          color=GREY, size=11)
+        return
+
+    # Limit to the top 4 most material changes
+    for text, direction in lines[:4]:
+        p = doc.add_paragraph(style="List Bullet")
+        p.paragraph_format.space_after = Pt(2)
+        pattern = re.compile(r"(\*\*[^*]+\*\*)")
+        for part in pattern.split(text):
+            if not part: continue
+            r = p.add_run()
+            if part.startswith("**") and part.endswith("**"):
+                r.text = part[2:-2]
+                r.font.bold = True
+            else:
+                r.text = part
+            r.font.size = Pt(11)
+            r.font.name = "Calibri"
+            # Color the arrow's direction
+            if direction == "improved":
+                r.font.color.rgb = GREEN  # which is black in this brand
+            elif direction == "worsened":
+                r.font.color.rgb = RED
+
+
 def build_doc(stats: dict, team: dict, targets: dict,
-              period_label: str, personalised_intro: Optional[str] = None) -> bytes:
-    """Render a one-page coaching docx and return its bytes."""
+              period_label: str, personalised_intro: Optional[str] = None,
+              comparison: Optional[dict] = None,
+              previous_period_label: Optional[str] = None) -> bytes:
+    """Render a one-page coaching docx and return its bytes.
+
+    If `comparison` is provided (a dict from compare_snapshots), a
+    "How this compares to <previous>" section is included.
+    """
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
@@ -570,6 +676,15 @@ def build_doc(stats: dict, team: dict, targets: dict,
     r = p.add_run(f"{stats['name']}  ·  {period_label}")
     r.font.size = Pt(12); r.font.color.rgb = GREY; r.font.name = "Calibri"
 
+    # Talent-grid label (if available) — small italic sub-line under name
+    tg = stats.get("talent_grid") or stats.get("extra", {}).get("talent_grid")
+    if tg and tg.get("label"):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(6)
+        r = p.add_run(f"Talent grid: {tg['label']}")
+        r.font.size = Pt(10); r.font.italic = True
+        r.font.color.rgb = GREY; r.font.name = "Calibri"
+
     # Intro
     intro_text = personalised_intro or _short_headline(stats, team, targets)
     _para_with_inline(doc, intro_text, space_after=4)
@@ -578,6 +693,10 @@ def build_doc(stats: dict, team: dict, targets: dict,
     png = personal_scorecard_png(stats, team, targets)
     if png:
         _add_image(doc, png, width_in=6.0)
+
+    # vs previous period — if comparison data is supplied
+    if comparison and previous_period_label:
+        _comparison_block(doc, comparison, previous_period_label)
 
     # Coaching blocks based on training_modules
     modules = stats.get("training_modules") or []
