@@ -556,6 +556,400 @@ td.num.dim { color: var(--ink-300); }
   .main { padding: 20px; }
   .numbers-grid { grid-template-columns: 1fr 1fr; }
 }
+/* ============================================================
+   REGIONS — map + tiles side-by-side
+   ============================================================ */
+.regions-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .regions-layout { grid-template-columns: 1fr; }
+}
+
+.region-map-wrap {
+  background: var(--card);
+  border: 1px solid var(--ink-100);
+  border-radius: 10px;
+  padding: 16px;
+  position: sticky; top: 20px;
+}
+.kenya-map {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.kenya-map .map-region {
+  fill: var(--ink-100);
+  stroke: white;
+  stroke-width: 2;
+  cursor: pointer;
+  transition: filter .12s;
+}
+.kenya-map .map-region:hover { filter: brightness(0.92); }
+.kenya-map .map-region.active { stroke: var(--brand); stroke-width: 3; }
+.kenya-map .map-region.perf-strong { fill: var(--ink-900); }
+.kenya-map .map-region.perf-on_track { fill: var(--ink-500); }
+.kenya-map .map-region.perf-needs_improvement { fill: var(--brand); }
+.kenya-map .map-region.perf-insufficient_data { fill: var(--ink-200); }
+.kenya-map .map-label {
+  fill: white;
+  font-family: "Inter Tight", sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  pointer-events: none;
+  text-anchor: middle;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.kenya-map .map-label.dark { fill: var(--ink-700); text-shadow: none; }
+.map-legend {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin-top: 10px; padding-top: 12px;
+  border-top: 1px solid var(--ink-100);
+  font-size: 11px; color: var(--ink-500);
+}
+.map-legend-item { display: flex; align-items: center; gap: 5px; }
+.map-legend .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block;
+}
+.map-legend .dot-strong { background: var(--ink-900); }
+.map-legend .dot-ok { background: var(--ink-500); }
+.map-legend .dot-bad { background: var(--brand); }
+.map-legend .dot-grey { background: var(--ink-200); }
+
+.region-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.region-tile {
+  background: var(--card);
+  border: 1px solid var(--ink-100);
+  border-left: 3px solid var(--ink-200);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.region-tile:hover {
+  border-color: var(--ink-700);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14,14,16,0.06);
+}
+.region-tile.perf-strong { border-left-color: var(--ink-900); }
+.region-tile.perf-on_track { border-left-color: var(--ink-500); }
+.region-tile.perf-needs_improvement { border-left-color: var(--brand); }
+.region-tile.perf-insufficient_data { border-left-color: var(--ink-200); }
+.region-tile.active {
+  background: var(--brand-pale);
+  border-color: var(--brand);
+}
+.region-tile .name {
+  font-size: 13px; font-weight: 600;
+  margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.region-tile .badge-staff {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--ink-100); color: var(--ink-700);
+  font-weight: 600;
+}
+.region-tile .badge-staff.overloaded { background: var(--brand-soft); color: var(--brand-dark); }
+.region-tile .badge-staff.under_utilised { background: var(--ink-100); color: var(--ink-700); }
+.region-tile .stat-row {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--ink-500);
+  margin-top: 2px;
+}
+.region-tile .stat-row .v {
+  color: var(--ink-900); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.region-tile .big-stat {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 22px; font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 2px;
+}
+.region-tile .big-stat-sub {
+  font-size: 11px; color: var(--ink-500); margin-bottom: 8px;
+}
+
+/* ============================================================
+   COMPARE PERIODS UI — appears in sidebar
+   ============================================================ */
+.compare-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 8px;
+}
+.compare-row .period-select { flex: 1; padding: 6px 8px; font-size: 12px; }
+.compare-row .arrow { color: var(--ink-300); font-size: 11px; }
+
+.cmp-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cmp-badge.improved { background: var(--ink-900); color: white; }
+.cmp-badge.worsened { background: var(--brand); color: white; }
+.cmp-badge.same { background: var(--ink-100); color: var(--ink-700); }
+
+.cmp-section {
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 10px; padding: 18px 20px; margin-bottom: 16px;
+}
+.cmp-section h3 { font-size: 13px; color: var(--ink-500); margin-bottom: 8px;
+  text-transform: uppercase; letter-spacing: 0.14em;
+  font-family: "Inter Tight", sans-serif;
+}
+.cmp-section .headline {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.cmp-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.cmp-metric { padding: 10px 14px; background: var(--paper); border-radius: 6px; }
+.cmp-metric .label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  font-weight: 600; color: var(--ink-500); margin-bottom: 4px;
+}
+.cmp-metric .change {
+  font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; gap: 6px;
+}
+.cmp-metric .arrow.up { color: var(--ink-900); }
+.cmp-metric .arrow.down { color: var(--brand); }
+.cmp-metric .arrow.same { color: var(--ink-300); }
+
+/* ============================================================
+   REGION DRILL-DOWN DRAWER (re-uses .drawer class)
+   ============================================================ */
+.region-drawer-body { padding: 28px 36px; }
+.region-stat-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  margin-bottom: 24px;
+}
+.region-solver-list {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.region-solver-list .row {
+  display: grid; grid-template-columns: 1fr auto auto auto;
+  align-items: center; gap: 12px;
+  padding: 10px 14px;
+  background: var(--card); border: 1px solid var(--ink-100);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .1s;
+  font-size: 13px;
+}
+.region-solver-list .row:hover { background: var(--ink-50); }
+.region-solver-list .row .name { font-weight: 500; }
+.region-solver-list .row .loc {
+  font-size: 11px; color: var(--ink-500);
+}
+.region-solver-list .row .stat {
+  font-variant-numeric: tabular-nums; font-size: 12px;
+}
+
+/* ============================================================
+   ADD SOLVER MODAL
+   ============================================================ */
+.form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.form-row label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+  font-weight: 600; color: var(--ink-500);
+}
+.form-row input, .form-row select {
+  padding: 9px 12px; border: 1px solid var(--ink-200);
+  border-radius: 6px; font-family: inherit; font-size: 13px;
+  background: white;
+}
+.form-row input:focus, .form-row select:focus {
+  outline: none; border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(217, 37, 42, 0.08);
+}
+.form-row .hint { font-size: 11px; color: var(--ink-500); margin-top: 2px; }
+
+.form-row-cb { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.form-row-cb input { width: 16px; height: 16px; }
+.form-row-cb label { font-size: 13px; color: var(--ink-700); }
+
+/* ============================================================
+   TALENT GRID — 9-box performance × quality matrix
+   ============================================================ */
+.talent-grid-wrap {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  grid-template-rows: 1fr 32px;
+  gap: 8px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.tg-y-axis {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between;
+  position: relative;
+}
+.tg-y-axis .tg-axis-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-500); font-weight: 600;
+  white-space: nowrap;
+  margin: auto 0;
+}
+.tg-y-axis .tg-axis-ticks {
+  position: absolute; top: 0; bottom: 0; right: -8px;
+  display: flex; flex-direction: column; justify-content: space-around;
+  font-size: 10px; color: var(--ink-400); font-weight: 600;
+}
+.tg-y-axis .tg-axis-ticks span { display: block; }
+
+.tg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(120px, 1fr));
+  gap: 6px;
+}
+.tg-spacer {}
+.tg-x-axis {
+  display: flex; flex-direction: column; align-items: center;
+}
+.tg-x-axis .tg-axis-ticks {
+  display: flex; justify-content: space-around;
+  width: 100%;
+  font-size: 10px; color: var(--ink-400); font-weight: 600;
+}
+.tg-x-axis .tg-axis-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--ink-500); font-weight: 600;
+  margin-top: 4px;
+}
+
+.tg-cell {
+  background: var(--card);
+  border: 1px solid var(--ink-100);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all .12s;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+  position: relative;
+}
+.tg-cell:hover {
+  border-color: var(--ink-700);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14,14,16,0.06);
+}
+.tg-cell.active {
+  border-color: var(--brand);
+  border-width: 2px;
+  padding: 11px;
+  background: var(--brand-soft);
+}
+.tg-cell .label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-700);
+  line-height: 1.3;
+}
+.tg-cell .count {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.tg-cell .count-sub {
+  font-size: 10px;
+  color: var(--ink-400);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.tg-cell.empty {
+  background: var(--paper);
+  opacity: 0.6;
+  cursor: default;
+}
+.tg-cell.empty:hover {
+  transform: none; box-shadow: none; border-color: var(--ink-100);
+}
+
+/* Cell coloring: top-right (star) = ink-900, bottom-left (at risk) = brand red */
+.tg-cell.tg-star  { background: linear-gradient(135deg, #FAFAF7 0%, #F0F0EA 100%); border-left: 3px solid var(--ink-900); }
+.tg-cell.tg-good  { border-left: 3px solid var(--ink-700); }
+.tg-cell.tg-mid   { border-left: 3px solid var(--ink-400); }
+.tg-cell.tg-warn  { border-left: 3px solid #E89B6C; }
+.tg-cell.tg-risk  { border-left: 3px solid var(--brand); background: linear-gradient(135deg, #FFFFFF 0%, #FFF5F5 100%); }
+
+.tg-cell-details {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--ink-100);
+}
+.tg-cell-details h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.tg-cell-desc {
+  font-size: 13px; color: var(--ink-500); margin-bottom: 14px;
+  line-height: 1.5;
+}
+.tg-solver-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+.tg-solver-list .row {
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--ink-100);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .1s;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.tg-solver-list .row:hover { background: var(--ink-50); }
+.tg-solver-list .row .name { font-weight: 500; font-size: 13px; }
+.tg-solver-list .row .score {
+  font-size: 11px; color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Talent-grid badge (used in solver table + drawer) */
+.tg-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tg-badge.tg-star  { background: var(--ink-900); color: white; }
+.tg-badge.tg-good  { background: var(--ink-700); color: white; }
+.tg-badge.tg-mid   { background: var(--ink-100); color: var(--ink-700); }
+.tg-badge.tg-warn  { background: #FFE8D6; color: #8C4810; }
+.tg-badge.tg-risk  { background: var(--brand-soft); color: var(--brand-dark); }
+
 </style>
 </head>
 <body>
@@ -573,6 +967,12 @@ td.num.dim { color: var(--ink-300); }
     <select class="period-select" id="periodSelect">
       <option value="">— no periods yet —</option>
     </select>
+    <div class="compare-row" id="compareRow" style="display:none">
+      <span class="arrow">vs</span>
+      <select class="period-select" id="comparePeriodSelect">
+        <option value="">— no comparison —</option>
+      </select>
+    </div>
   </div>
 
   <div class="side-section">
@@ -597,6 +997,8 @@ td.num.dim { color: var(--ink-300); }
 
   <div class="side-footer">
     Signed in as admin
+    <button class="small-btn" id="addSolverBtn">+ Add solver</button>
+    <button class="small-btn" id="manageSolversBtn">Manage solvers & regions</button>
     <button class="small-btn" id="manageEmailsBtn">Manage solver emails</button>
     <button class="small-btn" id="logoutBtn">Sign out</button>
   </div>
@@ -610,17 +1012,25 @@ td.num.dim { color: var(--ink-300); }
     <div class="page-subtitle" id="pageSubtitle">Loading...</div>
   </div>
   <div class="page-actions">
+    <button class="btn" id="bulkRecognitionBtn" style="display:none">Email recognition to strong performers</button>
     <button class="btn primary" id="bulkSendBtn" style="display:none">Email coaching to solvers missing target</button>
   </div>
 </div>
 
 <div class="empty-state" id="emptyState" style="display:none">
   <h2>No periods yet</h2>
-  <p>Upload your first Zoho export to begin. The portal expects a workbook with sheets named <strong>TOTAL VALUED</strong>, <strong>CLIENT RATING</strong>, and <strong>PENDING REASONS</strong>.</p>
+  <p>Upload your first Zoho export to begin. The portal expects a workbook with sheets named <strong>TOTAL VALUED</strong>, <strong>SOLVERS BASKET</strong>, and <strong>CLIENT RATING</strong>.</p>
   <button class="cta" onclick="document.getElementById('fileInput').click()">Choose file</button>
 </div>
 
 <div id="dashboard" style="display:none">
+
+  <!-- Period comparison summary (only shown when 2nd period selected) -->
+  <div class="cmp-section" id="cmpSection" style="display:none">
+    <h3>Comparing <span id="cmp-a-label">—</span> vs <span id="cmp-b-label">—</span></h3>
+    <div class="headline" id="cmp-headline">—</div>
+    <div class="cmp-grid" id="cmp-grid"></div>
+  </div>
 
   <div class="kpi-grid">
     <div class="kpi">
@@ -646,12 +1056,95 @@ td.num.dim { color: var(--ink-300); }
     <div class="kpi">
       <div class="label">Response TAT</div>
       <div class="value tnum"><span id="kpi-tat">—</span><span class="unit">h</span></div>
-      <div class="delta"><span class="badge" id="kpi-tat-badge">—</span><span id="kpi-tat-sub">target ≤ 4h</span></div>
+      <div class="delta"><span class="badge" id="kpi-tat-badge">—</span><span id="kpi-tat-sub">target ≤ 9h 30min</span></div>
     </div>
     <div class="kpi">
       <div class="label">Client rating</div>
       <div class="value tnum"><span id="kpi-rating">—</span><span class="unit">/5</span></div>
       <div class="delta"><span class="badge" id="kpi-rating-badge">—</span><span id="kpi-rating-sub">target ≥ 4.5</span></div>
+    </div>
+  </div>
+
+  <!-- ===== REGIONAL ANALYSIS SECTION ===== -->
+  <div class="section" id="regions-section">
+    <div class="section-header">
+      <h2 class="section-title">Regional performance</h2>
+      <div class="section-sub">Click any region to see its solvers & metrics</div>
+    </div>
+
+    <!-- Two-column layout: map on left, region tiles on right -->
+    <div class="regions-layout">
+      <div class="region-map-wrap">
+        <svg viewBox="0 0 480 460" class="kenya-map" id="kenyaMap" preserveAspectRatio="xMidYMid meet">
+          <!-- Country outline (visual border around the macro regions).
+               Drawn first so the region polygons render on top. -->
+          <path id="kenya-outline" d="
+            M 80,82
+            L 240,68
+            L 290,72
+            L 365,78
+            L 425,156
+            L 408,256
+            L 398,322
+            L 372,358
+            L 305,358
+            L 264,344
+            L 215,310
+            L 162,270
+            L 96,232
+            L 70,168
+            Z"
+            fill="none" stroke="var(--ink-200)" stroke-width="1.5"/>
+
+          <!-- Lake Victoria, just for orientation -->
+          <ellipse cx="74" cy="248" rx="22" ry="14"
+            fill="#E8EEF1" stroke="var(--ink-200)" stroke-width="1"/>
+          <text x="74" y="252" text-anchor="middle"
+            style="font-family: 'Inter Tight'; font-size: 8px; fill: var(--ink-400); font-style: italic">
+            L. Victoria
+          </text>
+
+          <!-- Indian Ocean label -->
+          <text x="425" y="335" text-anchor="middle"
+            style="font-family: 'Inter Tight'; font-size: 9px; fill: var(--ink-400); font-style: italic">
+            Indian
+          </text>
+          <text x="425" y="347" text-anchor="middle"
+            style="font-family: 'Inter Tight'; font-size: 9px; fill: var(--ink-400); font-style: italic">
+            Ocean
+          </text>
+
+          <!-- Macro region polygons (filled by performance class) -->
+          <g id="map-regions"></g>
+
+          <!-- Nairobi inset frame -->
+          <g id="nairobi-inset">
+            <rect x="305" y="375" width="160" height="78"
+              fill="white" stroke="var(--ink-200)" stroke-width="1" rx="4"/>
+            <text x="385" y="390" text-anchor="middle"
+              style="font-family: 'Fraunces'; font-size: 9px; font-weight: 600; fill: var(--ink-700)">
+              Nairobi (zoomed)
+            </text>
+            <!-- Tiny connector line from real Nairobi position to inset -->
+            <line x1="270" y1="290" x2="305" y2="395"
+              stroke="var(--ink-200)" stroke-width="1" stroke-dasharray="2,2"/>
+            <circle cx="270" cy="290" r="2.5" fill="var(--ink-700)"/>
+          </g>
+
+          <!-- City markers / region labels overlay -->
+          <g id="map-labels"></g>
+        </svg>
+        <div class="map-legend">
+          <span class="map-legend-item"><span class="dot dot-strong"></span>strong</span>
+          <span class="map-legend-item"><span class="dot dot-ok"></span>on track</span>
+          <span class="map-legend-item"><span class="dot dot-bad"></span>needs improvement</span>
+          <span class="map-legend-item"><span class="dot dot-grey"></span>insufficient data</span>
+        </div>
+      </div>
+
+      <div class="region-tiles" id="regionTiles">
+        <div style="padding:20px; color:var(--ink-500); font-size:13px">Loading regions...</div>
+      </div>
     </div>
   </div>
 
@@ -662,7 +1155,7 @@ td.num.dim { color: var(--ink-300); }
     </div>
     <div class="dist-grid">
       <div class="dist-card">
-        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 10</div></div>
+        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 9.5</div></div>
         <canvas id="dist-tat"></canvas>
       </div>
       <div class="dist-card">
@@ -677,6 +1170,46 @@ td.num.dim { color: var(--ink-300); }
         <div class="header"><div class="title">Client rating</div><div class="target">target ≥ 4.5</div></div>
         <canvas id="dist-rating"></canvas>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== 9-BOX TALENT GRID ===== -->
+  <div class="section" id="talent-grid-section">
+    <div class="section-header">
+      <h2 class="section-title">Talent grid</h2>
+      <div class="section-sub">
+        Performance (TAT, submission rate<span id="tg-reject-hint"></span>) × Quality (client rating, volume).
+        Click any cell to see who's in it.
+      </div>
+    </div>
+
+    <div class="talent-grid-wrap">
+      <!-- Y-axis label (rotated) -->
+      <div class="tg-y-axis">
+        <div class="tg-axis-label">Quality (rating × volume)</div>
+        <div class="tg-axis-ticks">
+          <span>High</span><span>Med</span><span>Low</span>
+        </div>
+      </div>
+
+      <!-- The 3×3 grid itself -->
+      <div class="tg-grid" id="tgGrid"></div>
+
+      <!-- X-axis (bottom) -->
+      <div class="tg-spacer"></div>
+      <div class="tg-x-axis">
+        <div class="tg-axis-ticks">
+          <span>Low</span><span>Med</span><span>High</span>
+        </div>
+        <div class="tg-axis-label">Performance (TAT × submission)</div>
+      </div>
+    </div>
+
+    <!-- Solvers in the selected cell -->
+    <div class="tg-cell-details" id="tgCellDetails" style="display:none">
+      <h3 id="tgCellTitle">—</h3>
+      <div class="tg-cell-desc" id="tgCellDesc"></div>
+      <div class="tg-solver-list" id="tgSolverList"></div>
     </div>
   </div>
 
@@ -701,6 +1234,7 @@ td.num.dim { color: var(--ink-300); }
               <th data-sort="onsite_tat" style="text-align:right">On-site</th>
               <th data-sort="submission_rate" style="text-align:right">Submission</th>
               <th data-sort="rating" style="text-align:right">Rating</th>
+              <th>Grid</th>
               <th>Focus</th>
             </tr>
           </thead>
@@ -745,6 +1279,92 @@ td.num.dim { color: var(--ink-300); }
   </div>
 </div>
 
+<!-- Region drill-down drawer -->
+<aside class="drawer" id="regionDrawer">
+  <div class="drawer-header">
+    <button class="drawer-close" id="regionDrawerClose">×</button>
+    <h2 id="region-drawer-name">—</h2>
+    <div class="subtitle" id="region-drawer-subtitle">—</div>
+  </div>
+  <div class="region-drawer-body" id="regionDrawerBody"></div>
+</aside>
+
+<!-- Add solver modal -->
+<div class="modal-backdrop" id="addSolverModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <div>
+        <h2>Add a solver</h2>
+        <div class="sub">Register a new solver with their region and base location.</div>
+      </div>
+      <button class="btn" id="closeAddSolverModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label for="newSolverName">Solver name</label>
+        <input type="text" id="newSolverName" placeholder="Full name">
+      </div>
+      <div class="form-row">
+        <label for="newSolverRegion">Region</label>
+        <select id="newSolverRegion">
+          <option value="">— select a region —</option>
+          <option>South Nairobi</option>
+          <option>East Nairobi</option>
+          <option>West Nairobi</option>
+          <option>North Nairobi</option>
+          <option>Rift</option>
+          <option>Central</option>
+          <option>Coast</option>
+          <option>West Kenya</option>
+          <option>East Kenya</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="newSolverLocation">Base location</label>
+        <input type="text" id="newSolverLocation" placeholder="e.g. Westlands, Nakuru, Mombasa">
+        <div class="hint">The town or area they primarily cover.</div>
+      </div>
+      <div class="form-row-cb">
+        <input type="checkbox" id="newSolverIsLead">
+        <label for="newSolverIsLead">Regional lead</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="cancelAddSolver">Cancel</button>
+      <button class="btn primary" id="confirmAddSolver">Add solver</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage solvers modal -->
+<div class="modal-backdrop" id="manageSolversModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Solvers & regions</h2>
+        <div class="sub">Full roster. Edit region/location inline. Use "Seed from Excel" to bulk-import.</div>
+      </div>
+      <button class="btn" id="closeManageSolversModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center">
+        <label class="btn ghost" style="cursor:pointer; margin:0">
+          Seed from Excel
+          <input type="file" id="seedSolversInput" accept=".xlsx,.xls" style="display:none">
+        </label>
+        <button class="btn primary" id="addSolverFromModalBtn">+ Add solver</button>
+        <div class="search-box" style="flex:1; max-width:300px; min-width:200px">
+          <input type="text" id="solverSearchModal" placeholder="Filter solvers...">
+        </div>
+      </div>
+      <div id="manageSolversList"><p style="color:var(--ink-500); text-align:center; padding:20px">Loading...</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="closeManageSolversModalBottom">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -760,7 +1380,7 @@ let charts = {};
 let solverEmails = {};   // { name: email }
 
 const TARGETS_DEFAULT = {
-  response_tat_hours_max: 10.0,
+  response_tat_hours_max: 9.5,
   onsite_tat_hours_max: 0.5,
   rating_min: 4.5,
   submission_rate_min: 0.85,
@@ -839,21 +1459,25 @@ async function loadPeriods() {
   const data = await apiFetch("/api/periods");
   periods = data.periods || [];
   const sel = document.getElementById("periodSelect");
+  const cmpSel = document.getElementById("comparePeriodSelect");
   sel.innerHTML = "";
+  cmpSel.innerHTML = '<option value="">— no comparison —</option>';
   if (!periods.length) {
     sel.innerHTML = '<option value="">— no periods yet —</option>';
     document.getElementById("emptyState").style.display = "block";
     document.getElementById("dashboard").style.display = "none";
     document.getElementById("pageSubtitle").textContent = "Upload a workbook to begin.";
     document.getElementById("bulkSendBtn").style.display = "none";
+    document.getElementById("bulkRecognitionBtn").style.display = "none";
+    document.getElementById("compareRow").style.display = "none";
     return;
   }
   periods.forEach(p => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.label;
-    sel.appendChild(opt);
+    const o1 = document.createElement("option"); o1.value = p.id; o1.textContent = p.label; sel.appendChild(o1);
+    const o2 = document.createElement("option"); o2.value = p.id; o2.textContent = p.label; cmpSel.appendChild(o2);
   });
+  // Compare row only useful when there are 2+ periods
+  document.getElementById("compareRow").style.display = periods.length >= 2 ? "flex" : "none";
   sel.value = periods[0].id;
   await loadPeriod(periods[0].id);
 }
@@ -876,6 +1500,7 @@ function render() {
   document.getElementById("emptyState").style.display = "none";
   document.getElementById("dashboard").style.display = "block";
   document.getElementById("bulkSendBtn").style.display = "inline-flex";
+  document.getElementById("bulkRecognitionBtn").style.display = "inline-flex";
 
   const t = currentPeriod.team;
   document.getElementById("pageSubtitle").textContent =
@@ -883,8 +1508,20 @@ function render() {
 
   renderKPIs();
   renderDistributions();
+  renderTalentGrid();
   renderTable();
   renderSidebarCounts();
+
+  // Regions (loads asynchronously)
+  loadAndRenderRegions(currentPeriod.id);
+
+  // Period comparison (only if a comparison period is selected)
+  const cmpId = document.getElementById("comparePeriodSelect").value;
+  if (cmpId && parseInt(cmpId) !== currentPeriod.id) {
+    loadAndRenderComparison(currentPeriod.id, parseInt(cmpId));
+  } else {
+    document.getElementById("cmpSection").style.display = "none";
+  }
 }
 
 function renderKPIs() {
@@ -906,8 +1543,10 @@ function renderKPIs() {
     `team rate · median solver ${fmtPct(t.median_submission_rate)}`,
     (v) => v.toFixed(1), [85, 75]);
 
-  setKPI("kpi-tat", t.median_response_tat_hrs, 10, true, "median across solvers", (v) => v.toFixed(1), [10, 15]);
-   
+  setKPI("kpi-tat", t.median_response_tat_hrs, 9.5, true,
+    "median across solvers",
+    (v) => v.toFixed(1), [9.5, 19]);
+
   setKPI("kpi-rating", t.avg_rating, 4.5, false,
     "team mean rating",
     (v) => v.toFixed(2), [4.5, 4.0]);
@@ -935,9 +1574,9 @@ function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
 
 function renderDistributions() {
   const solvers = currentPeriod.solvers;
-  drawDistribution("dist-tat", ["0-5h", "5-10h", "10-15h", "15-24h", "24h+"],
-     solvers.map(s => s.median_response_tat_hrs),
-     [0, 5, 10, 15, 24, Infinity], [0, 10]);
+  drawDistribution("dist-tat", ["0-5h", "5-9.5h", "9.5-24h", "24-72h", "72h+"],
+    solvers.map(s => s.median_response_tat_hrs),
+    [0, 5, 9.5, 24, 72, Infinity], [0, 9.5]);
   drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
     solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
     [0, 15, 30, 45, 60, Infinity], [0, 30]);
@@ -983,6 +1622,142 @@ function drawDistribution(canvasId, labels, values, edges, targetRange) {
   });
 }
 
+/* ============================================================
+   TALENT GRID (9-box) — performance × quality
+   ============================================================ */
+
+// Cell metadata: keyed by cell index 1..9 (matches backend _BOX_LABELS).
+// Each entry: [grid row 1..3 top->bottom, grid col 1..3 left->right, color class, description]
+const TG_CELLS = {
+  // Row 1 (top): high quality
+  1: { row: 1, col: 1, cls: "tg-mid",  label: "Untapped Potential",
+       desc: "High quality work and trusted with volume, but performance (TAT, submission) is below par. Removing the bottleneck unlocks a star." },
+  2: { row: 1, col: 2, cls: "tg-good", label: "Growing Talent",
+       desc: "High-quality output with solid performance. One disciplined month away from being a star." },
+  3: { row: 1, col: 3, cls: "tg-star", label: "Star Performer",
+       desc: "Hitting all targets across performance and quality. The team's anchor — keep visible and grow into mentor / harder-job roles." },
+  // Row 2 (middle): medium quality
+  4: { row: 2, col: 1, cls: "tg-warn", label: "Inconsistent",
+       desc: "Medium quality but underperforming on speed/reliability. Specific coaching on workflow habits will move the needle." },
+  5: { row: 2, col: 2, cls: "tg-mid",  label: "Solid Contributor",
+       desc: "Reliable middle of the team. Push them toward one specific area (TAT or volume) to step up." },
+  6: { row: 2, col: 3, cls: "tg-good", label: "Rising Star",
+       desc: "Strong performance, decent quality, lower volume. Trust them with more work — they're ready." },
+  // Row 3 (bottom): low quality
+  7: { row: 3, col: 1, cls: "tg-risk", label: "At Risk",
+       desc: "Low on both axes. Intervention needed — direct conversation about expectations and concrete improvement plan." },
+  8: { row: 3, col: 2, cls: "tg-warn", label: "Needs Coaching",
+       desc: "Performance is acceptable but quality (rating/volume) is weak. Focus coaching on client interaction and taking on more work." },
+  9: { row: 3, col: 3, cls: "tg-good", label: "Workhorse",
+       desc: "Strong performance and reliability, but quality (rating or volume) lags. Either grow their assignments or address rating directly." },
+};
+
+let currentSelectedTGCell = null;
+
+function renderTalentGrid() {
+  const grid = document.getElementById("tgGrid");
+  if (!grid || !currentPeriod) return;
+
+  // Bucket solvers by their talent-grid cell
+  const byCell = {};
+  for (let c = 1; c <= 9; c++) byCell[c] = [];
+  for (const s of currentPeriod.solvers) {
+    const tg = s.talent_grid;
+    if (!tg || !tg.cell) continue;
+    byCell[tg.cell].push(s);
+  }
+
+  // Render the 3x3 grid in the correct visual order (top-left to bottom-right is cells 1..9)
+  let html = "";
+  for (let cellNum = 1; cellNum <= 9; cellNum++) {
+    const meta = TG_CELLS[cellNum];
+    const solvers = byCell[cellNum];
+    const count = solvers.length;
+    const isActive = currentSelectedTGCell === cellNum;
+    const cellClass = count > 0 ? meta.cls : "empty";
+    html += `
+      <div class="tg-cell ${cellClass} ${isActive ? 'active' : ''}"
+           data-cell="${cellNum}"
+           onclick="${count > 0 ? `selectTGCell(${cellNum})` : ''}">
+        <div class="label">${escapeHtml(meta.label)}</div>
+        <div>
+          <div class="count">${count}</div>
+          <div class="count-sub">solver${count === 1 ? '' : 's'}</div>
+        </div>
+      </div>`;
+  }
+  grid.innerHTML = html;
+
+  // Update reject-rate hint
+  const anyHasReject = currentPeriod.solvers.some(
+    s => s.talent_grid && s.talent_grid.components && s.talent_grid.components.reject_rate != null
+  );
+  document.getElementById("tg-reject-hint").textContent = anyHasReject ? ", reject rate" : "";
+
+  // If a cell was selected, re-render its detail view
+  if (currentSelectedTGCell) {
+    renderTGCellDetails(currentSelectedTGCell, byCell[currentSelectedTGCell]);
+  } else {
+    document.getElementById("tgCellDetails").style.display = "none";
+  }
+}
+
+function selectTGCell(cellNum) {
+  currentSelectedTGCell = cellNum;
+  const byCell = {};
+  for (const s of currentPeriod.solvers) {
+    const tg = s.talent_grid;
+    if (!tg || !tg.cell) continue;
+    if (!byCell[tg.cell]) byCell[tg.cell] = [];
+    byCell[tg.cell].push(s);
+  }
+
+  // Update active class on grid cells
+  document.querySelectorAll(".tg-cell").forEach(el => {
+    el.classList.toggle("active", parseInt(el.dataset.cell) === cellNum);
+  });
+
+  renderTGCellDetails(cellNum, byCell[cellNum] || []);
+}
+
+function renderTGCellDetails(cellNum, solvers) {
+  const meta = TG_CELLS[cellNum];
+  const wrap = document.getElementById("tgCellDetails");
+  wrap.style.display = "block";
+  document.getElementById("tgCellTitle").textContent = `${meta.label} — ${solvers.length} solver${solvers.length===1?'':'s'}`;
+  document.getElementById("tgCellDesc").textContent = meta.desc;
+
+  // Sort by composite score (avg of perf + quality), descending
+  const sorted = solvers.slice().sort((a, b) => {
+    const ax = ((a.talent_grid.performance_score || 0) + (a.talent_grid.quality_score || 0)) / 2;
+    const bx = ((b.talent_grid.performance_score || 0) + (b.talent_grid.quality_score || 0)) / 2;
+    return bx - ax;
+  });
+
+  const listEl = document.getElementById("tgSolverList");
+  if (!sorted.length) {
+    listEl.innerHTML = '<div style="padding:10px; color:var(--ink-500); font-size:13px">No solvers in this cell.</div>';
+    return;
+  }
+  listEl.innerHTML = sorted.map(s => {
+    const tg = s.talent_grid;
+    const pScore = Math.round(tg.performance_score || 0);
+    const qScore = Math.round(tg.quality_score || 0);
+    return `
+      <div class="row" onclick="openDrawerByName('${escapeHtml(s.name).replace(/'/g, "\\'")}')">
+        <div class="name">${escapeHtml(s.name)}</div>
+        <div class="score">P ${pScore} · Q ${qScore}</div>
+      </div>`;
+  }).join("");
+}
+
+// Helper to build the inline badge used in the solver table & drawer
+function talentGridBadge(tg) {
+  if (!tg || !tg.cell) return "";
+  const meta = TG_CELLS[tg.cell];
+  return `<span class="tg-badge ${meta.cls}" title="Performance ${Math.round(tg.performance_score)} / Quality ${Math.round(tg.quality_score)}">${escapeHtml(meta.label)}</span>`;
+}
+
 function renderTable() {
   let solvers = currentPeriod.solvers.slice();
   if (currentFilter !== "all") {
@@ -1026,17 +1801,18 @@ function renderTable() {
       <td class="num" style="text-align:right">${fmtInt(s.volume)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.assigned_count)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.jobs_initiated || 0)}</td>
-      <td class="num" style="text-align:right">${metricCell(s.median_response_tat_hrs, "h", 4, true, 16)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.median_response_tat_hrs, "h", 9.5, true, 24)}</td>
       <td class="num" style="text-align:right">${metricCell(s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null, "m", 30, true, 60)}</td>
       <td class="num" style="text-align:right">${metricCell(s.submission_rate != null ? s.submission_rate * 100 : null, "%", 85, false, 100)}</td>
       <td class="num" style="text-align:right">${metricCell(s.avg_rating, "", 4.5, false, 5)}</td>
+      <td>${talentGridBadge(s.talent_grid)}</td>
       <td>${focusTags(s.focus_areas)}</td>
     `;
     tr.addEventListener("click", () => openDrawer(s));
     tbody.appendChild(tr);
   }
   if (!solvers.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
   }
 }
 
@@ -1080,7 +1856,7 @@ function renderSidebarCounts() {
    DRAWER
    ============================================================ */
 async function openDrawer(s) {
-  document.getElementById("drawer-name").textContent = s.name;
+  document.getElementById("drawer-name").innerHTML = escapeHtml(s.name) + (s.talent_grid ? ' ' + talentGridBadge(s.talent_grid) : '');
   const focusParts = [];
   if ((s.focus_areas || []).includes("strong")) focusParts.push("on target across the board");
   else focusParts.push(s.focus_areas && s.focus_areas.length ? `focus: ${s.focus_areas.join(" + ")}` : "no flags");
@@ -1096,7 +1872,7 @@ async function openDrawer(s) {
     <div class="drawer-section">
       <h3>Performance vs target</h3>
       <div class="scorecard-bars">
-        ${scoreBar("Response TAT", s.median_response_tat_hrs, t.median_response_tat_hrs, targets.response_tat_hours_max, true, 16, "h")}
+        ${scoreBar("Response TAT", s.median_response_tat_hrs, t.median_response_tat_hrs, targets.response_tat_hours_max, true, 24, "h")}
         ${scoreBar("On-site TAT", (s.avg_onsite_tat_hrs ?? 0) * 60, (t.avg_onsite_tat_hrs ?? 0) * 60, targets.onsite_tat_hours_max * 60, true, 60, "m")}
         ${scoreBar("Submission rate", (s.submission_rate ?? 0) * 100, (t.median_submission_rate ?? 0) * 100, targets.submission_rate_min * 100, false, 100, "%")}
         ${scoreBar("Client rating", s.avg_rating, t.avg_rating, targets.rating_min, false, 5, "")}
@@ -1269,7 +2045,7 @@ function timeBlock(s) {
   return `
     <div class="coaching-block time">
       <h4>Working Faster — Time</h4>
-      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 10-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
+      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 4-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
       <p><strong>Three habits that work:</strong></p>
       <ol>
         <li>Accept or decline within <strong>5 minutes</strong> of dispatch</li>
@@ -1437,6 +2213,54 @@ async function bulkSendCoachingEmails() {
   }
 }
 
+async function bulkSendRecognitionEmails() {
+  if (!currentPeriod) return;
+
+  // Count strong performers so the confirmation message tells the user how many will get email
+  const strongCount = (currentPeriod.solvers || []).filter(
+    s => (s.focus_areas || []).includes("strong")
+  ).length;
+  if (strongCount === 0) {
+    toast("No strong performers in this period.", "error");
+    return;
+  }
+
+  if (!confirm(
+    `Send recognition emails to all ${strongCount} strong performer${strongCount === 1 ? "" : "s"} this period?\n\n` +
+    "Solvers with any needs_work classification will be skipped. " +
+    "Solvers without an email on file will be reported."
+  )) return;
+
+  const btn = document.getElementById("bulkRecognitionBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Sending emails...';
+
+  try {
+    const res = await fetch(`/api/periods/${currentPeriod.id}/send-recognition-emails`, {
+      method: "POST", credentials: "include",
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Failed" }));
+      throw new Error(data.detail);
+    }
+    const result = await res.json();
+    const s = result.summary;
+    let msg = `Sent ${s.sent} recognition email${s.sent === 1 ? "" : "s"}.`;
+    if (s.failed) msg += ` ${s.failed} failed.`;
+    if (s.skipped_no_email) msg += ` ${s.skipped_no_email} skipped (no email on file).`;
+    toast(msg, s.failed > 0 ? "error" : "success");
+
+    if (s.skipped_no_email > 0) {
+      setTimeout(() => openEmailsModal(), 1000);
+    }
+  } catch (err) {
+    toast("Error: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "Email recognition to strong performers";
+  }
+}
+
 /* ============================================================
    EMAILS MODAL
    ============================================================ */
@@ -1521,6 +2345,16 @@ fileInput.addEventListener("change", async (e) => {
     fileInput.value = "";
     await loadPeriods();
     document.getElementById("periodSelect").value = result.period_id;
+
+    // Auto-select previous period for comparison if there's one available
+    // (so uploading May after April triggers the comparison automatically).
+    const cmpSel = document.getElementById("comparePeriodSelect");
+    const otherPeriods = periods.filter(p => p.id !== result.period_id);
+    if (otherPeriods.length > 0) {
+      // Pick the most recent OTHER period (periods are sorted by uploaded_at desc)
+      cmpSel.value = otherPeriods[0].id;
+      toast(`Comparing ${result.label} vs ${otherPeriods[0].label}`, "success");
+    }
     await loadPeriod(result.period_id);
   } catch (err) {
     toast("Error: " + err.message, "error");
@@ -1577,6 +2411,552 @@ document.getElementById("manageEmailsBtn").addEventListener("click", openEmailsM
 document.getElementById("closeEmailsModal").addEventListener("click", closeEmailsModal);
 document.getElementById("closeEmailsModalBottom").addEventListener("click", closeEmailsModal);
 document.getElementById("bulkSendBtn").addEventListener("click", bulkSendCoachingEmails);
+document.getElementById("bulkRecognitionBtn").addEventListener("click", bulkSendRecognitionEmails);
+
+/* ============================================================
+   REGIONS — tiles + Kenya SVG map
+   ============================================================ */
+
+// Region polygons inside a 480×460 viewBox sized to match the country
+// outline drawn in the SVG. The 4 Nairobi sub-regions live in a zoomed
+// inset in the lower-right (rect 305,380 to 465,445); everything else
+// is on the main country map.
+//
+// Approximate centroid lat/lng → SVG coords mapping (rough):
+//   34°E lon ≈ x=70 (Lake Vic),  41°E ≈ x=420 (Somalia border)
+//   4.5°N lat ≈ y=70  (Sudan),   -4.5°S ≈ y=360 (Indian Ocean)
+const REGION_POLYGONS = {
+  // === Mainland regions (drawn on country map) ===
+
+  // West Kenya — around Lake Victoria (Kisumu, Kakamega, Kisii)
+  "West Kenya":    "M 80,205 L 130,200 L 150,235 L 145,270 L 120,275 L 90,260 L 78,228 Z",
+
+  // Rift — long N-S strip (Eldoret, Nakuru, Naivasha)
+  "Rift":          "M 130,82 L 195,85 L 210,180 L 195,250 L 175,285 L 150,275 L 145,235 L 130,200 L 95,180 L 88,140 L 100,100 Z",
+
+  // Central — around Mt Kenya (Nyeri, Thika)
+  "Central":       "M 195,85 L 260,90 L 268,180 L 255,235 L 230,275 L 210,275 L 195,260 L 195,180 Z",
+
+  // East Kenya — large NE region (Garissa, Wajir, Machakos eastward)
+  "East Kenya":    "M 260,90 L 360,82 L 420,150 L 408,256 L 398,300 L 350,290 L 290,275 L 268,250 L 268,180 Z",
+
+  // Coast — SE coastline (Mombasa, Kilifi, Malindi)
+  "Coast":         "M 290,275 L 350,290 L 398,300 L 372,358 L 320,358 L 280,338 L 270,310 Z",
+
+  // === Nairobi sub-regions (in the inset frame, 305,395 → 465,449) ===
+  // 2x2 grid: 77px wide x 25px tall each
+  "North Nairobi": "M 308,398 L 385,398 L 385,422 L 308,422 Z",
+  "East Nairobi":  "M 385,398 L 462,398 L 462,422 L 385,422 Z",
+  "West Nairobi":  "M 308,422 L 385,422 L 385,448 L 308,448 Z",
+  "South Nairobi": "M 385,422 L 462,422 L 462,448 L 385,448 Z",
+};
+
+// Centroids for labels (approx geometric center of each polygon)
+const REGION_LABEL_POS = {
+  // Mainland — bigger labels
+  "West Kenya":    [113, 240, "big"],
+  "Rift":          [160, 195, "big"],
+  "Central":       [225, 195, "big"],
+  "East Kenya":    [335, 195, "big"],
+  "Coast":         [332, 320, "big"],
+  // Nairobi quadrants (inset) — centered in each cell
+  "North Nairobi": [346, 412, "small"],
+  "East Nairobi":  [423, 412, "small"],
+  "West Nairobi":  [346, 437, "small"],
+  "South Nairobi": [423, 437, "small"],
+};
+
+let currentRegions = [];
+
+async function loadAndRenderRegions(periodId) {
+  try {
+    const data = await apiFetch(`/api/periods/${periodId}/regions`);
+    currentRegions = data.regions || [];
+    renderRegionTiles(currentRegions);
+    drawKenyaMap(currentRegions);
+  } catch (err) {
+    document.getElementById("regionTiles").innerHTML =
+      `<div style="padding:20px; color:var(--ink-500); font-size:13px">Could not load regions: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderRegionTiles(regions) {
+  const wrap = document.getElementById("regionTiles");
+  if (!regions.length) {
+    wrap.innerHTML = `<div style="padding:20px; color:var(--ink-500); font-size:13px">No regional data yet. Seed the solver roster from "Manage solvers & regions" in the sidebar.</div>`;
+    return;
+  }
+  wrap.innerHTML = regions.map(r => {
+    const sub = r.submission_rate != null ? `${(r.submission_rate * 100).toFixed(0)}%` : "—";
+    const rtat = r.avg_response_tat_hrs != null ? `${r.avg_response_tat_hrs.toFixed(1)}h` : "—";
+    const staffingBadge = r.staffing === "overloaded" || r.staffing === "under_utilised"
+      ? `<span class="badge-staff ${r.staffing}">${r.staffing.replace('_', ' ')}</span>`
+      : `<span class="badge-staff">${r.staffing}</span>`;
+    return `
+      <div class="region-tile perf-${r.performance}" data-region="${escapeHtml(r.region)}" onclick="openRegionDrawer('${escapeHtml(r.region).replace(/'/g, "\\'")}')">
+        <div class="name">
+          <span>${escapeHtml(r.region)}</span>
+          ${staffingBadge}
+        </div>
+        <div class="big-stat tnum">${r.solver_count}</div>
+        <div class="big-stat-sub">solver${r.solver_count===1?'':'s'} · ${r.jobs_per_solver != null ? r.jobs_per_solver.toFixed(0) : '—'} jobs/solver</div>
+        <div class="stat-row"><span>Assigned</span><span class="v">${fmtInt(r.total_assigned)}</span></div>
+        <div class="stat-row"><span>Submission</span><span class="v">${sub}</span></div>
+        <div class="stat-row"><span>Response TAT</span><span class="v">${rtat}</span></div>
+      </div>`;
+  }).join("");
+}
+
+function drawKenyaMap(regions) {
+  const regionsGroup = document.getElementById("map-regions");
+  const labelsGroup = document.getElementById("map-labels");
+  if (!regionsGroup || !labelsGroup) return;
+
+  const perfByRegion = {};
+  for (const r of regions) {
+    perfByRegion[r.region] = r;
+  }
+
+  let regionsSvg = "";
+  let labelsSvg = "";
+  for (const [region, d] of Object.entries(REGION_POLYGONS)) {
+    const r = perfByRegion[region];
+    const perfClass = r ? `perf-${r.performance}` : "perf-insufficient_data";
+    const tooltipText = `${region}${r ? ` — ${r.solver_count} solvers · ${r.total_assigned} jobs` : ''}`;
+    regionsSvg += `<path d="${d}" class="map-region ${perfClass}" data-region="${escapeHtml(region)}" onclick="openRegionDrawer('${escapeHtml(region).replace(/'/g, "\\'")}')"><title>${escapeHtml(tooltipText)}</title></path>`;
+
+    const pos = REGION_LABEL_POS[region];
+    const lx = pos[0], ly = pos[1], size = pos[2] || "big";
+    const fontSize = size === "small" ? "8.5px" : "11px";
+    // Shorter labels for the inset
+    let labelText = region;
+    if (size === "small") {
+      labelText = region.replace(" Nairobi", "");
+    }
+    // Use a slight darker outline to make labels readable on any background
+    labelsSvg += `<text x="${lx}" y="${ly}" class="map-label" style="font-size:${fontSize}; ${size === 'small' ? 'font-weight:700;' : 'font-weight:600;'}">${escapeHtml(labelText)}</text>`;
+
+    // Add solver count below the label for mainland regions
+    if (size === "big" && r) {
+      labelsSvg += `<text x="${lx}" y="${ly + 12}" class="map-label" style="font-size:9px; font-weight:500; opacity:0.92">${r.solver_count} solvers</text>`;
+    }
+    // For Nairobi sub-regions, add tiny solver count
+    if (size === "small" && r) {
+      labelsSvg += `<text x="${lx}" y="${ly + 8}" class="map-label" style="font-size:7px; font-weight:500; opacity:0.85">${r.solver_count} sv</text>`;
+    }
+  }
+  regionsGroup.innerHTML = regionsSvg;
+  labelsGroup.innerHTML = labelsSvg;
+}
+
+function openRegionDrawer(regionName) {
+  const r = currentRegions.find(x => x.region === regionName);
+  if (!r) { toast("Region not found", "error"); return; }
+
+  document.getElementById("region-drawer-name").textContent = regionName;
+  const subParts = [
+    `${r.solver_count} solver${r.solver_count===1?'':'s'}`,
+    `${r.total_assigned} jobs assigned`,
+    `${r.jobs_per_solver != null ? r.jobs_per_solver.toFixed(0) : '—'} per solver`,
+  ];
+  if (r.staffing !== "balanced") subParts.push(r.staffing.replace("_", " "));
+  document.getElementById("region-drawer-subtitle").textContent = subParts.join(" · ");
+
+  // Find solver snapshots for this region from the current period
+  const namesSet = new Set(r.solver_names || []);
+  const solversInRegion = currentPeriod
+    ? currentPeriod.solvers.filter(s => namesSet.has(s.name))
+    : [];
+
+  const sub = r.submission_rate != null ? `${(r.submission_rate * 100).toFixed(1)}%` : "—";
+  const rtat = r.avg_response_tat_hrs != null ? `${r.avg_response_tat_hrs.toFixed(1)}h` : "—";
+  const otat = r.avg_onsite_tat_hrs != null ? `${(r.avg_onsite_tat_hrs * 60).toFixed(0)}min` : "—";
+  const rating = r.avg_rating != null ? r.avg_rating.toFixed(2) : "—";
+
+  const locs = (r.locations || []).filter(l => l).slice(0, 12);
+
+  document.getElementById("regionDrawerBody").innerHTML = `
+    <div class="region-stat-grid">
+      <div class="numbox"><div class="lbl">Total assigned</div><div class="val tnum">${fmtInt(r.total_assigned)}</div><div class="sub">${fmtInt(r.total_valued)} valued · ${fmtInt(r.total_pending)} pending</div></div>
+      <div class="numbox"><div class="lbl">Submission rate</div><div class="val tnum">${sub}</div><div class="sub">target ≥ 85%</div></div>
+      <div class="numbox"><div class="lbl">Avg response TAT</div><div class="val tnum">${rtat}</div><div class="sub">target ≤ 9h 30min</div></div>
+      <div class="numbox"><div class="lbl">Avg on-site TAT</div><div class="val tnum">${otat}</div><div class="sub">target ≤ 30min</div></div>
+      <div class="numbox"><div class="lbl">Avg client rating</div><div class="val tnum">${rating}</div><div class="sub">target ≥ 4.5</div></div>
+      <div class="numbox"><div class="lbl">Coaching needed</div><div class="val tnum">${r.needs_coaching_count}</div><div class="sub">${r.strong_count} strong performer${r.strong_count===1?'':'s'}</div></div>
+    </div>
+
+    ${locs.length ? `
+    <div class="drawer-section">
+      <h3>Locations covered</h3>
+      <div style="font-size:13px; color:var(--ink-700)">${locs.map(escapeHtml).join(" · ")}</div>
+    </div>` : ''}
+
+    <div class="drawer-section">
+      <h3>Solvers in this region</h3>
+      <div class="region-solver-list">
+        ${solversInRegion.map(s => {
+          const subPct = s.submission_rate != null ? `${(s.submission_rate*100).toFixed(0)}%` : '—';
+          const tatStr = s.median_response_tat_hrs != null ? `${s.median_response_tat_hrs.toFixed(1)}h` : '—';
+          return `
+            <div class="row" onclick="closeRegionDrawer(); setTimeout(()=>openDrawerByName('${escapeHtml(s.name).replace(/'/g, "\\'")}'), 250)">
+              <div><div class="name">${escapeHtml(s.name)}</div></div>
+              <div class="stat">vol ${s.volume}</div>
+              <div class="stat">sub ${subPct}</div>
+              <div class="stat">TAT ${tatStr}</div>
+            </div>`;
+        }).join("")}
+        ${solversInRegion.length === 0 ? '<div style="padding:12px; color:var(--ink-500); font-size:13px">No solvers in this region.</div>' : ''}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("regionDrawer").classList.add("open");
+  document.getElementById("drawerBackdrop").classList.add("open");
+
+  // Highlight on map
+  document.querySelectorAll(".map-region").forEach(p => p.classList.remove("active"));
+  const polygon = document.querySelector(`.map-region[data-region="${regionName}"]`);
+  if (polygon) polygon.classList.add("active");
+  // Highlight tile
+  document.querySelectorAll(".region-tile").forEach(t => t.classList.remove("active"));
+  const tile = document.querySelector(`.region-tile[data-region="${regionName}"]`);
+  if (tile) tile.classList.add("active");
+}
+
+function closeRegionDrawer() {
+  document.getElementById("regionDrawer").classList.remove("open");
+  document.getElementById("drawerBackdrop").classList.remove("open");
+  document.querySelectorAll(".map-region.active").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".region-tile.active").forEach(t => t.classList.remove("active"));
+}
+
+function openDrawerByName(name) {
+  if (!currentPeriod) return;
+  const s = currentPeriod.solvers.find(x => x.name === name);
+  if (s) openDrawer(s);
+}
+
+/* ============================================================
+   PERIOD COMPARISON
+   ============================================================ */
+
+async function loadAndRenderComparison(aId, bId) {
+  try {
+    const cmp = await apiFetch(`/api/periods/${aId}/compare/${bId}`);
+    renderComparison(cmp);
+  } catch (err) {
+    toast("Comparison failed: " + err.message, "error");
+    document.getElementById("cmpSection").style.display = "none";
+  }
+}
+
+function renderComparison(cmp) {
+  document.getElementById("cmpSection").style.display = "block";
+  document.getElementById("cmp-a-label").textContent = cmp.a.label;
+  document.getElementById("cmp-b-label").textContent = cmp.b.label;
+
+  const headline = cmp.team && cmp.team.headline
+    ? cmp.team.headline.charAt(0).toUpperCase() + cmp.team.headline.slice(1)
+    : "—";
+  document.getElementById("cmp-headline").textContent = headline;
+
+  const metrics = (cmp.team && cmp.team.metrics) || {};
+  const spec = [
+    ["response_tat", "Response TAT", v => v != null ? v.toFixed(1) + "h" : "—"],
+    ["submission_rate", "Submission rate", v => v != null ? (v * 100).toFixed(1) + "%" : "—"],
+    ["volume", "Total valued", v => v != null ? Math.round(v).toLocaleString() : "—"],
+    ["assigned", "Jobs assigned", v => v != null ? Math.round(v).toLocaleString() : "—"],
+    ["rating", "Client rating", v => v != null ? v.toFixed(2) : "—"],
+    ["jobs_initiated", "Self-initiated", v => v != null ? Math.round(v).toLocaleString() : "—"],
+  ];
+
+  const grid = document.getElementById("cmp-grid");
+  grid.innerHTML = spec.map(([key, label, fmt]) => {
+    const m = metrics[key];
+    if (!m) return '';
+    const arrow = m.direction === "improved" ? "↑"
+                : m.direction === "worsened" ? "↓"
+                : "→";
+    const arrowClass = m.direction === "improved" ? "up"
+                     : m.direction === "worsened" ? "down"
+                     : "same";
+    return `
+      <div class="cmp-metric">
+        <div class="label">${label}</div>
+        <div class="change">
+          <span>${fmt(m.previous)}</span>
+          <span class="arrow ${arrowClass}">${arrow}</span>
+          <span>${fmt(m.current)}</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+/* ============================================================
+   REGISTERED SOLVERS — add + manage
+   ============================================================ */
+
+let registeredSolvers = [];
+let manageSearchQuery = "";
+
+async function loadRegisteredSolvers() {
+  try {
+    const data = await apiFetch("/api/registered-solvers");
+    registeredSolvers = data.solvers || [];
+  } catch (err) {
+    registeredSolvers = [];
+  }
+}
+
+function openAddSolverModal() {
+  document.getElementById("newSolverName").value = "";
+  document.getElementById("newSolverRegion").value = "";
+  document.getElementById("newSolverLocation").value = "";
+  document.getElementById("newSolverIsLead").checked = false;
+  document.getElementById("addSolverModal").classList.add("open");
+  setTimeout(() => document.getElementById("newSolverName").focus(), 80);
+}
+
+function closeAddSolverModal() {
+  document.getElementById("addSolverModal").classList.remove("open");
+}
+
+async function confirmAddSolver() {
+  const name = document.getElementById("newSolverName").value.trim();
+  const region = document.getElementById("newSolverRegion").value;
+  const location = document.getElementById("newSolverLocation").value.trim();
+  const is_lead = document.getElementById("newSolverIsLead").checked;
+  if (!name) { toast("Solver name is required", "error"); return; }
+  if (!region) { toast("Region is required", "error"); return; }
+
+  try {
+    await apiFetch("/api/registered-solvers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, region, location, is_lead }),
+    });
+    toast(`Added ${name} to ${region}`, "success");
+    closeAddSolverModal();
+    await loadRegisteredSolvers();
+    // If the manage modal is open, refresh it
+    if (document.getElementById("manageSolversModal").classList.contains("open")) {
+      renderManageSolvers();
+    }
+    // Recompute regions in case the new solver matches a basket solver
+    if (currentPeriod) {
+      try {
+        await apiFetch(`/api/periods/${currentPeriod.id}/regions?recompute=true`);
+        await loadAndRenderRegions(currentPeriod.id);
+      } catch {}
+    }
+  } catch (err) {
+    toast("Could not add: " + err.message, "error");
+  }
+}
+
+async function openManageSolversModal() {
+  document.getElementById("manageSolversModal").classList.add("open");
+  document.getElementById("manageSolversList").innerHTML =
+    '<p style="color:var(--ink-500); text-align:center; padding:20px">Loading...</p>';
+  await loadRegisteredSolvers();
+  renderManageSolvers();
+}
+
+function closeManageSolversModal() {
+  document.getElementById("manageSolversModal").classList.remove("open");
+}
+
+function renderManageSolvers() {
+  const wrap = document.getElementById("manageSolversList");
+  let solvers = registeredSolvers;
+  if (manageSearchQuery) {
+    const q = manageSearchQuery.toLowerCase();
+    solvers = solvers.filter(s =>
+      s.name.toLowerCase().includes(q)
+      || s.region.toLowerCase().includes(q)
+      || (s.location || "").toLowerCase().includes(q)
+    );
+  }
+  if (!solvers.length) {
+    wrap.innerHTML = `<p style="color:var(--ink-500); text-align:center; padding:20px">
+      ${registeredSolvers.length === 0 ? 'No solvers yet. Seed from Excel or add manually.' : 'No matches.'}
+    </p>`;
+    return;
+  }
+
+  // Group by region
+  const byRegion = {};
+  solvers.forEach(s => {
+    if (!byRegion[s.region]) byRegion[s.region] = [];
+    byRegion[s.region].push(s);
+  });
+
+  let html = "";
+  for (const region of Object.keys(byRegion).sort()) {
+    html += `<div style="margin-bottom:18px">
+      <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:var(--ink-500); font-weight:600; margin-bottom:6px">${escapeHtml(region)} <span style="color:var(--ink-300)">(${byRegion[region].length})</span></div>
+      <div class="email-list">`;
+    for (const s of byRegion[region]) {
+      const leadMark = s.is_lead ? '<span title="Regional lead" style="color:var(--brand); margin-right:4px">★</span>' : '';
+      html += `
+        <div class="email-row" data-solver-id="${s.id}">
+          <div class="name">${leadMark}${escapeHtml(s.name)}</div>
+          <input type="text" value="${escapeHtml(s.location || '')}" placeholder="location" data-field="location">
+          <select data-field="region">
+            <option ${s.region==='South Nairobi'?'selected':''}>South Nairobi</option>
+            <option ${s.region==='East Nairobi'?'selected':''}>East Nairobi</option>
+            <option ${s.region==='West Nairobi'?'selected':''}>West Nairobi</option>
+            <option ${s.region==='North Nairobi'?'selected':''}>North Nairobi</option>
+            <option ${s.region==='Rift'?'selected':''}>Rift</option>
+            <option ${s.region==='Central'?'selected':''}>Central</option>
+            <option ${s.region==='Coast'?'selected':''}>Coast</option>
+            <option ${s.region==='West Kenya'?'selected':''}>West Kenya</option>
+            <option ${s.region==='East Kenya'?'selected':''}>East Kenya</option>
+          </select>
+          <button class="save-btn" onclick="saveSolverEdit(${s.id})">Save</button>
+          <button class="save-btn" style="background:var(--brand)" onclick="deleteRegisteredSolver(${s.id}, '${escapeHtml(s.name).replace(/'/g, "\\'")}')">×</button>
+        </div>`;
+    }
+    html += `</div></div>`;
+  }
+  wrap.innerHTML = html;
+
+  // Adjust grid for the row template (overrides the default email-row CSS)
+  wrap.querySelectorAll(".email-row").forEach(row => {
+    row.style.gridTemplateColumns = "1fr 1.2fr 1.2fr auto auto";
+  });
+}
+
+async function saveSolverEdit(solverId) {
+  const row = document.querySelector(`.email-row[data-solver-id="${solverId}"]`);
+  if (!row) return;
+  const name = row.querySelector(".name").textContent.replace("★", "").trim();
+  const location = row.querySelector('[data-field="location"]').value.trim();
+  const region = row.querySelector('[data-field="region"]').value;
+  // Preserve is_lead from original record
+  const original = registeredSolvers.find(s => s.id === solverId);
+  const is_lead = original ? original.is_lead : false;
+  try {
+    await apiFetch(`/api/registered-solvers/${solverId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, region, location, is_lead }),
+    });
+    toast(`Saved ${name}`, "success");
+    await loadRegisteredSolvers();
+    // Refresh regions
+    if (currentPeriod) {
+      try {
+        await apiFetch(`/api/periods/${currentPeriod.id}/regions?recompute=true`);
+        await loadAndRenderRegions(currentPeriod.id);
+      } catch {}
+    }
+  } catch (err) {
+    toast("Save failed: " + err.message, "error");
+  }
+}
+
+async function deleteRegisteredSolver(solverId, name) {
+  if (!confirm(`Remove ${name} from the registered solvers list? Their snapshot data stays — they'll just appear under "Unassigned" on the regional view.`)) return;
+  try {
+    await apiFetch(`/api/registered-solvers/${solverId}`, { method: "DELETE" });
+    toast(`Removed ${name}`, "success");
+    await loadRegisteredSolvers();
+    renderManageSolvers();
+    if (currentPeriod) {
+      try {
+        await apiFetch(`/api/periods/${currentPeriod.id}/regions?recompute=true`);
+        await loadAndRenderRegions(currentPeriod.id);
+      } catch {}
+    }
+  } catch (err) {
+    toast("Delete failed: " + err.message, "error");
+  }
+}
+
+async function seedSolversFromFile(file) {
+  const form = new FormData();
+  form.append("file", file);
+  toast("Seeding solvers from Excel...");
+  try {
+    const res = await fetch("/api/registered-solvers/seed", {
+      method: "POST", credentials: "include", body: form,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Seed failed" }));
+      throw new Error(data.detail);
+    }
+    const result = await res.json();
+    toast(`Added ${result.added}, updated ${result.updated}${result.skipped_duplicates ? ', skipped ' + result.skipped_duplicates + ' duplicates' : ''}`, "success");
+    await loadRegisteredSolvers();
+    renderManageSolvers();
+    if (currentPeriod) {
+      try {
+        await apiFetch(`/api/periods/${currentPeriod.id}/regions?recompute=true`);
+        await loadAndRenderRegions(currentPeriod.id);
+      } catch {}
+    }
+  } catch (err) {
+    toast("Seed failed: " + err.message, "error");
+  }
+}
+
+/* ============================================================
+   NEW EVENT WIRING
+   ============================================================ */
+
+// Compare-period selector
+document.getElementById("comparePeriodSelect").addEventListener("change", (e) => {
+  if (currentPeriod) {
+    const v = e.target.value;
+    if (v && parseInt(v) !== currentPeriod.id) {
+      loadAndRenderComparison(currentPeriod.id, parseInt(v));
+    } else {
+      document.getElementById("cmpSection").style.display = "none";
+    }
+  }
+});
+
+// Region drawer close
+document.getElementById("regionDrawerClose").addEventListener("click", closeRegionDrawer);
+document.getElementById("drawerBackdrop").addEventListener("click", () => {
+  closeDrawer();
+  closeRegionDrawer();
+});
+
+// Add solver buttons
+document.getElementById("addSolverBtn").addEventListener("click", openAddSolverModal);
+document.getElementById("addSolverFromModalBtn").addEventListener("click", () => {
+  closeManageSolversModal();
+  setTimeout(openAddSolverModal, 200);
+});
+document.getElementById("closeAddSolverModal").addEventListener("click", closeAddSolverModal);
+document.getElementById("cancelAddSolver").addEventListener("click", closeAddSolverModal);
+document.getElementById("confirmAddSolver").addEventListener("click", confirmAddSolver);
+
+// Manage solvers
+document.getElementById("manageSolversBtn").addEventListener("click", openManageSolversModal);
+document.getElementById("closeManageSolversModal").addEventListener("click", closeManageSolversModal);
+document.getElementById("closeManageSolversModalBottom").addEventListener("click", closeManageSolversModal);
+document.getElementById("solverSearchModal").addEventListener("input", (e) => {
+  manageSearchQuery = e.target.value;
+  renderManageSolvers();
+});
+document.getElementById("seedSolversInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (f) seedSolversFromFile(f);
+  e.target.value = "";
+});
+
+// Extend the ESC handler to also close new modals/drawer
+const origKeyHandler = document.onkeydown;
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeRegionDrawer();
+    closeAddSolverModal();
+    closeManageSolversModal();
+  }
+});
 
 init();
 </script>
