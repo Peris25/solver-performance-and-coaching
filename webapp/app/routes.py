@@ -142,6 +142,10 @@ async def upload_workbook(
 
     # Solver snapshots
     for s in result["solvers"]:
+        # Stash the talent-grid result inside `extra` so we don't need a schema migration
+        extra_with_grid = dict(s["extra"])
+        extra_with_grid["talent_grid"] = s.get("talent_grid")
+
         snap = models.SolverSnapshot(
             period_id=period.id,
             name=s["name"],
@@ -164,9 +168,52 @@ async def upload_workbook(
             classifications=s["classifications"],
             training_modules=s["training_modules"],
             focus_areas=s["focus_areas"],
-            extra=s["extra"],
+            extra=extra_with_grid,
         )
         db.add(snap)
+
+    # --- Regional snapshots ---
+    # Match each snapshot name against the registered solvers to get a region.
+    # Solvers not in the registered list go into "Unassigned".
+    registered = db.scalars(select(models.Solver).where(models.Solver.active == 1)).all()
+    registered_names = [r.name for r in registered]
+    name_to_info = {r.name: {"region": r.region, "location": r.location or ""} for r in registered}
+
+    # Build a map from basket-name -> registered solver info using fuzzy matching
+    solver_region_map = {}
+    for s in result["solvers"]:
+        matched = analysis.find_solver_match(s["name"], registered_names)
+        if matched:
+            solver_region_map[s["name"]] = name_to_info[matched]
+        # else: stays Unassigned
+
+    # Aggregate by region and persist
+    # Delete any old region snapshots for this period before re-inserting
+    for r in db.scalars(select(models.RegionSnapshot).where(models.RegionSnapshot.period_id == period.id)).all():
+        db.delete(r)
+
+    region_aggs = analysis.aggregate_by_region(result["solvers"], solver_region_map)
+    for ra in region_aggs:
+        db.add(models.RegionSnapshot(
+            period_id=period.id,
+            region=ra["region"],
+            solver_count=ra["solver_count"],
+            total_assigned=ra["total_assigned"],
+            total_valued=ra["total_valued"],
+            total_pending=ra["total_pending"],
+            total_jobs_initiated=ra["total_jobs_initiated"],
+            jobs_per_solver=ra["jobs_per_solver"],
+            submission_rate=ra["submission_rate"],
+            avg_response_tat_hrs=ra["avg_response_tat_hrs"],
+            avg_onsite_tat_hrs=ra["avg_onsite_tat_hrs"],
+            avg_rating=ra["avg_rating"],
+            staffing=ra["staffing"],
+            performance=ra["performance"],
+            needs_coaching_count=ra["needs_coaching_count"],
+            strong_count=ra["strong_count"],
+            locations=ra["locations"],
+            solver_names=ra["solver_names"],
+        ))
 
     db.commit()
     db.refresh(period)
@@ -245,6 +292,7 @@ def delete_period(period_id: int, db: Session = Depends(get_db), _: str = Depend
 # ---------------------------------------------------------------------------
 
 def snapshot_to_dict(s: models.SolverSnapshot) -> dict:
+    extra = s.extra or {}
     return {
         "name": s.name,
         "volume": s.volume,
@@ -266,7 +314,8 @@ def snapshot_to_dict(s: models.SolverSnapshot) -> dict:
         "classifications": s.classifications or {},
         "training_modules": s.training_modules or [],
         "focus_areas": s.focus_areas or [],
-        "extra": s.extra or {},
+        "talent_grid": extra.get("talent_grid"),
+        "extra": extra,
     }
 
 
@@ -309,6 +358,7 @@ def generate_report(
     period_id: int,
     name: str,
     payload: IntroPayload = IntroPayload(),
+    compare_to: Optional[int] = None,
     db: Session = Depends(get_db),
     _: str = Depends(auth.require_admin),
 ):
@@ -324,6 +374,24 @@ def generate_report(
     )
     if not snap:
         raise HTTPException(status_code=404, detail="Solver not in this period")
+
+    # Optional: pull comparison snapshot from a previous period
+    comparison_data = None
+    previous_period_label = None
+    if compare_to:
+        prev_period = db.get(models.Period, compare_to)
+        prev_snap = db.scalar(
+            select(models.SolverSnapshot).where(
+                models.SolverSnapshot.period_id == compare_to,
+                models.SolverSnapshot.name == name,
+            )
+        )
+        if prev_period and prev_snap:
+            comparison_data = analysis.compare_snapshots(
+                snapshot_to_dict(snap),
+                snapshot_to_dict(prev_snap),
+            )
+            previous_period_label = prev_period.label
 
     docx_bytes = reports.build_doc(
         snapshot_to_dict(snap),
@@ -344,6 +412,8 @@ def generate_report(
         targets=analysis.TARGETS,
         period_label=period.label,
         personalised_intro=payload.intro,
+        comparison=comparison_data,
+        previous_period_label=previous_period_label,
     )
 
     safe_name = re.sub(r"[^\w]+", "_", name).strip("_")
@@ -455,6 +525,7 @@ def _email_one(period: models.Period, snap: models.SolverSnapshot,
             period_label=period.label,
             stats=snapshot_to_dict(snap),
             docx_bytes=docx_bytes,
+            targets=analysis.TARGETS,
         )
         log.status = "sent"
         db.add(log)
@@ -562,6 +633,64 @@ def bulk_send_coaching_emails(
     }
 
 
+@router.post("/api/periods/{period_id}/send-recognition-emails")
+def bulk_send_recognition_emails(
+    period_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Send recognition emails to every solver who hit all targets this period.
+
+    "Strong performer" = focus_areas == ["strong"] (no needs_work classifications).
+    Subject line, body, and attachment filename all signal "recognition" not
+    "coaching" — same delivery flow, different copy.
+
+    Skips solvers without an email on file and reports them so the admin
+    can add the missing addresses.
+    """
+    period = db.get(models.Period, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    snaps = sorted(period.snapshots, key=lambda s: s.name)
+    email_map = {
+        r.name: r.email for r in
+        db.scalars(select(models.SolverEmail)).all()
+    }
+
+    results: list[EmailSendResult] = []
+    for snap in snaps:
+        focus = snap.focus_areas or []
+        # Only strong performers — skip anyone with a needs_work classification
+        if "strong" not in focus:
+            results.append(EmailSendResult(
+                name=snap.name, status="skipped_not_strong",
+                detail="not a strong performer this period"
+            ))
+            continue
+        to_email = email_map.get(snap.name)
+        if not to_email:
+            results.append(EmailSendResult(
+                name=snap.name, status="skipped_no_email",
+                detail="add email in Solver Emails"
+            ))
+            continue
+        result = _email_one(period, snap, to_email, trigger="bulk_recognition", db=db)
+        results.append(result)
+
+    return {
+        "ok": True,
+        "period_id": period_id,
+        "results": [r.dict() for r in results],
+        "summary": {
+            "sent": sum(1 for r in results if r.status == "sent"),
+            "failed": sum(1 for r in results if r.status == "failed"),
+            "skipped_no_email": sum(1 for r in results if r.status == "skipped_no_email"),
+            "skipped_not_strong": sum(1 for r in results if r.status == "skipped_not_strong"),
+        },
+    }
+
+
 @router.get("/api/periods/{period_id}/email-log")
 def period_email_log(
     period_id: int,
@@ -584,4 +713,362 @@ def period_email_log(
             "error": r.error,
             "focus_areas": r.focus_areas,
         } for r in rows]
+    }
+
+
+# ---------------------------------------------------------------------------
+# Registered solvers (CRUD) — the canonical roster with region/location.
+# Used for regional analysis. Loaded once from SOLVERS_REGIONAL_LIST.xlsx
+# and then maintained via this UI as new hires come on.
+# ---------------------------------------------------------------------------
+
+class SolverPayload(BaseModel):
+    name: str
+    region: str
+    location: Optional[str] = None
+    is_lead: Optional[bool] = False
+
+
+def _solver_to_dict(s: models.Solver) -> dict:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "region": s.region,
+        "location": s.location or "",
+        "active": bool(s.active),
+        "is_lead": bool(s.is_lead),
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@router.get("/api/registered-solvers")
+def list_registered_solvers(db: Session = Depends(get_db), _: str = Depends(auth.require_admin)):
+    rows = db.scalars(select(models.Solver).order_by(models.Solver.region, models.Solver.name)).all()
+    return {"solvers": [_solver_to_dict(s) for s in rows]}
+
+
+@router.post("/api/registered-solvers")
+def create_registered_solver(
+    payload: SolverPayload,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    region = payload.region.strip()
+    if not region:
+        raise HTTPException(status_code=400, detail="Region is required")
+
+    existing = db.scalar(select(models.Solver).where(models.Solver.name == name))
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Solver {name!r} already exists")
+
+    s = models.Solver(
+        name=name,
+        region=region,
+        location=(payload.location or "").strip(),
+        is_lead=1 if payload.is_lead else 0,
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return _solver_to_dict(s)
+
+
+@router.put("/api/registered-solvers/{solver_id}")
+def update_registered_solver(
+    solver_id: int,
+    payload: SolverPayload,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    s = db.get(models.Solver, solver_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solver not found")
+    s.name = payload.name.strip() or s.name
+    s.region = payload.region.strip() or s.region
+    s.location = (payload.location or "").strip()
+    s.is_lead = 1 if payload.is_lead else 0
+    db.commit()
+    db.refresh(s)
+    return _solver_to_dict(s)
+
+
+@router.delete("/api/registered-solvers/{solver_id}")
+def delete_registered_solver(
+    solver_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    s = db.get(models.Solver, solver_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Solver not found")
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/api/registered-solvers/seed")
+async def seed_registered_solvers(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Seed the solvers table from a SOLVERS_REGIONAL_LIST.xlsx file.
+
+    Parses the regional list (rows have name in col A, location in col B,
+    with region header rows where col B == 'Location'). Stars on names
+    indicate regional leads.
+
+    Upserts: existing solvers (by name) get region/location updated,
+    new ones are inserted.
+    """
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Upload an Excel file")
+
+    from openpyxl import load_workbook
+    import tempfile
+    tmp = Path(tempfile.gettempdir()) / f"seed_{datetime.utcnow().timestamp()}.xlsx"
+    with open(tmp, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    try:
+        wb = load_workbook(tmp, read_only=True)
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Could not read Excel: {e}")
+
+    ws = wb.active
+    current_region = None
+    parsed: list[tuple[str, str, str, bool]] = []  # (name, region, location, is_lead)
+
+    for row in ws.iter_rows(values_only=True):
+        if not row or not row[0]:
+            continue
+        a = str(row[0]).strip()
+        b = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+
+        # Region header row: col B says "Location"
+        if b.lower() == "location":
+            current_region = a
+            continue
+        if not current_region:
+            continue
+        # Skip header text rows
+        if a.lower().startswith("detailed solver") or a.lower() == "name":
+            continue
+
+        is_lead = a.startswith("⭐")
+        name = a.lstrip("⭐ ").strip()
+        if not name:
+            continue
+        parsed.append((name, current_region, b, is_lead))
+
+    tmp.unlink(missing_ok=True)
+
+    added, updated, skipped_duplicates = 0, 0, 0
+    seen_in_batch: set[str] = set()
+    for name, region, location, is_lead in parsed:
+        # Skip if we've already processed this name in this seed pass
+        # (handles solvers listed under multiple regions in the source spreadsheet —
+        # we keep the FIRST occurrence; admin can edit afterwards)
+        if name in seen_in_batch:
+            skipped_duplicates += 1
+            continue
+        seen_in_batch.add(name)
+
+        existing = db.scalar(select(models.Solver).where(models.Solver.name == name))
+        if existing:
+            existing.region = region
+            existing.location = location
+            existing.is_lead = 1 if is_lead else 0
+            updated += 1
+        else:
+            db.add(models.Solver(
+                name=name, region=region, location=location,
+                is_lead=1 if is_lead else 0, active=1,
+            ))
+            added += 1
+
+    db.commit()
+    return {
+        "ok": True,
+        "added": added,
+        "updated": updated,
+        "skipped_duplicates": skipped_duplicates,
+        "total_parsed": len(parsed),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Regions — per-period regional aggregations (for the map and tiles).
+# ---------------------------------------------------------------------------
+
+@router.get("/api/periods/{period_id}/regions")
+def get_period_regions(
+    period_id: int,
+    recompute: bool = False,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Return all region snapshots for a period. The dashboard uses these
+    for the regional tiles and the Kenya map.
+
+    `recompute=true` forces re-aggregation from the live solver list (useful
+    after seeding solvers or adding/removing registered solvers).
+    """
+    p = db.get(models.Period, period_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    rows = db.scalars(
+        select(models.RegionSnapshot)
+        .where(models.RegionSnapshot.period_id == period_id)
+        .order_by(desc(models.RegionSnapshot.total_assigned))
+    ).all()
+
+    # Detect "stale" stored data: if Unassigned dominates, the registered
+    # solver list has likely changed since upload — recompute.
+    stale = False
+    if rows:
+        unassigned_row = next((r for r in rows if r.region == "Unassigned"), None)
+        total_solvers = sum(r.solver_count for r in rows)
+        if unassigned_row and total_solvers > 0:
+            unassigned_pct = unassigned_row.solver_count / total_solvers
+            if unassigned_pct > 0.5:
+                stale = True
+
+    # Recompute path: either explicitly requested, stored data is stale,
+    # or there are no stored region snapshots at all
+    if recompute or stale or not rows:
+        registered = db.scalars(select(models.Solver).where(models.Solver.active == 1)).all()
+        name_to_info = {r.name: {"region": r.region, "location": r.location or ""} for r in registered}
+        registered_names = [r.name for r in registered]
+
+        solver_region_map = {}
+        snap_dicts = [snapshot_to_dict(s) for s in p.snapshots]
+        for s in snap_dicts:
+            matched = analysis.find_solver_match(s["name"], registered_names)
+            if matched:
+                solver_region_map[s["name"]] = name_to_info[matched]
+
+        regions = analysis.aggregate_by_region(snap_dicts, solver_region_map)
+
+        # Persist the recomputed region snapshots (overwrite existing)
+        for r in rows:
+            db.delete(r)
+        for ra in regions:
+            db.add(models.RegionSnapshot(
+                period_id=p.id,
+                region=ra["region"],
+                solver_count=ra["solver_count"],
+                total_assigned=ra["total_assigned"],
+                total_valued=ra["total_valued"],
+                total_pending=ra["total_pending"],
+                total_jobs_initiated=ra["total_jobs_initiated"],
+                jobs_per_solver=ra["jobs_per_solver"],
+                submission_rate=ra["submission_rate"],
+                avg_response_tat_hrs=ra["avg_response_tat_hrs"],
+                avg_onsite_tat_hrs=ra["avg_onsite_tat_hrs"],
+                avg_rating=ra["avg_rating"],
+                staffing=ra["staffing"],
+                performance=ra["performance"],
+                needs_coaching_count=ra["needs_coaching_count"],
+                strong_count=ra["strong_count"],
+                locations=ra["locations"],
+                solver_names=ra["solver_names"],
+            ))
+        db.commit()
+        return {"period_id": period_id, "regions": regions}
+
+    return {
+        "period_id": period_id,
+        "regions": [
+            {
+                "region": r.region,
+                "solver_count": r.solver_count,
+                "total_assigned": r.total_assigned,
+                "total_valued": r.total_valued,
+                "total_pending": r.total_pending,
+                "total_jobs_initiated": r.total_jobs_initiated,
+                "jobs_per_solver": r.jobs_per_solver,
+                "submission_rate": r.submission_rate,
+                "avg_response_tat_hrs": r.avg_response_tat_hrs,
+                "avg_onsite_tat_hrs": r.avg_onsite_tat_hrs,
+                "avg_rating": r.avg_rating,
+                "staffing": r.staffing,
+                "performance": r.performance,
+                "needs_coaching_count": r.needs_coaching_count,
+                "strong_count": r.strong_count,
+                "locations": r.locations or [],
+                "solver_names": r.solver_names or [],
+            }
+            for r in rows
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Period comparison — pick A and B, get per-solver and team deltas.
+# Used both for the standalone comparison view and to enrich coaching docs.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/periods/{a_id}/compare/{b_id}")
+def compare_periods(
+    a_id: int,
+    b_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Compare two periods. `a` is the more recent / current, `b` is the
+    earlier / baseline."""
+    a = db.get(models.Period, a_id)
+    b = db.get(models.Period, b_id)
+    if not a or not b:
+        raise HTTPException(status_code=404, detail="One or both periods not found")
+
+    a_snaps = {s.name: snapshot_to_dict(s) for s in a.snapshots}
+    b_snaps = {s.name: snapshot_to_dict(s) for s in b.snapshots}
+
+    # Team-level comparison
+    team_a = {
+        "median_response_tat_hrs": a.median_response_tat_hrs,
+        "avg_onsite_tat_hrs": a.avg_onsite_tat_hrs,
+        "submission_rate": a.team_submission_rate,
+        "volume": a.total_valuations,
+        "avg_rating": a.avg_rating,
+        "assigned_count": a.total_jobs_assigned or 0,
+        "jobs_initiated": a.total_jobs_initiated_by_solvers or 0,
+    }
+    team_b = {
+        "median_response_tat_hrs": b.median_response_tat_hrs,
+        "avg_onsite_tat_hrs": b.avg_onsite_tat_hrs,
+        "submission_rate": b.team_submission_rate,
+        "volume": b.total_valuations,
+        "avg_rating": b.avg_rating,
+        "assigned_count": b.total_jobs_assigned or 0,
+        "jobs_initiated": b.total_jobs_initiated_by_solvers or 0,
+    }
+    team_cmp = analysis.compare_snapshots(team_a, team_b)
+
+    # Per-solver — only solvers present in BOTH periods
+    common = sorted(set(a_snaps.keys()) & set(b_snaps.keys()))
+    per_solver = []
+    for name in common:
+        cmp = analysis.compare_snapshots(a_snaps[name], b_snaps[name])
+        if cmp:
+            per_solver.append({
+                "name": name,
+                "current_focus": a_snaps[name].get("focus_areas") or [],
+                **cmp,
+            })
+
+    return {
+        "a": {"id": a.id, "label": a.label},
+        "b": {"id": b.id, "label": b.label},
+        "team": team_cmp,
+        "solvers": per_solver,
+        "a_only": sorted(set(a_snaps.keys()) - set(b_snaps.keys())),
+        "b_only": sorted(set(b_snaps.keys()) - set(a_snaps.keys())),
     }
