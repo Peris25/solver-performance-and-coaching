@@ -131,6 +131,8 @@ async def upload_workbook(
     period.total_jobs_initiated_by_solvers = t.get("total_jobs_initiated_by_solvers") or 0
     period.team_submission_rate = t["team_submission_rate"]
     period.median_submission_rate = t["median_submission_rate"]
+    period.avg_total_tat_hrs = t.get("avg_total_tat_hrs")
+    period.median_total_tat_hrs = t.get("median_total_tat_hrs")
     period.avg_response_tat_hrs = t["avg_response_tat_hrs"]
     period.median_response_tat_hrs = t["median_response_tat_hrs"]
     period.avg_onsite_tat_hrs = t["avg_onsite_tat_hrs"]
@@ -159,6 +161,8 @@ async def upload_workbook(
             n_ratings=s["n_ratings"],
             submission_rate=s["submission_rate"],
             approval_rate=s["approval_rate"],
+            avg_total_tat_hrs=s.get("avg_total_tat_hrs"),
+            median_total_tat_hrs=s.get("median_total_tat_hrs"),
             avg_response_tat_hrs=s["avg_response_tat_hrs"],
             median_response_tat_hrs=s["median_response_tat_hrs"],
             avg_onsite_tat_hrs=s["avg_onsite_tat_hrs"],
@@ -263,6 +267,8 @@ def get_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(a
             "total_jobs_initiated_by_solvers": p.total_jobs_initiated_by_solvers or 0,
             "team_submission_rate": p.team_submission_rate,
             "median_submission_rate": p.median_submission_rate,
+            "avg_total_tat_hrs": p.avg_total_tat_hrs,
+            "median_total_tat_hrs": p.median_total_tat_hrs,
             "avg_response_tat_hrs": p.avg_response_tat_hrs,
             "median_response_tat_hrs": p.median_response_tat_hrs,
             "avg_onsite_tat_hrs": p.avg_onsite_tat_hrs,
@@ -305,6 +311,8 @@ def snapshot_to_dict(s: models.SolverSnapshot) -> dict:
         "n_ratings": s.n_ratings,
         "submission_rate": s.submission_rate,
         "approval_rate": s.approval_rate,
+        "avg_total_tat_hrs": s.avg_total_tat_hrs,
+        "median_total_tat_hrs": s.median_total_tat_hrs,
         "avg_response_tat_hrs": s.avg_response_tat_hrs,
         "median_response_tat_hrs": s.median_response_tat_hrs,
         "avg_onsite_tat_hrs": s.avg_onsite_tat_hrs,
@@ -400,6 +408,8 @@ def generate_report(
             "total_valuations": period.total_valuations,
             "team_submission_rate": period.team_submission_rate,
             "median_submission_rate": period.median_submission_rate,
+            "avg_total_tat_hrs": period.avg_total_tat_hrs,
+            "median_total_tat_hrs": period.median_total_tat_hrs,
             "avg_response_tat_hrs": period.avg_response_tat_hrs,
             "median_response_tat_hrs": period.median_response_tat_hrs,
             "avg_onsite_tat_hrs": period.avg_onsite_tat_hrs,
@@ -489,6 +499,8 @@ def _build_doc_for(period: models.Period, snap: models.SolverSnapshot) -> bytes:
             "total_valuations": period.total_valuations,
             "team_submission_rate": period.team_submission_rate,
             "median_submission_rate": period.median_submission_rate,
+            "avg_total_tat_hrs": period.avg_total_tat_hrs,
+            "median_total_tat_hrs": period.median_total_tat_hrs,
             "avg_response_tat_hrs": period.avg_response_tat_hrs,
             "median_response_tat_hrs": period.median_response_tat_hrs,
             "avg_onsite_tat_hrs": period.avg_onsite_tat_hrs,
@@ -505,7 +517,8 @@ def _build_doc_for(period: models.Period, snap: models.SolverSnapshot) -> bytes:
 
 
 def _email_one(period: models.Period, snap: models.SolverSnapshot,
-               to_email: str, trigger: str, db: Session) -> EmailSendResult:
+               to_email: str, trigger: str, db: Session,
+               custom_body: str | None = None) -> EmailSendResult:
     """Send the coaching email to a single solver and record the result."""
     import app.emails as emails  # local import so the module can be missing in dev
 
@@ -526,6 +539,7 @@ def _email_one(period: models.Period, snap: models.SolverSnapshot,
             stats=snapshot_to_dict(snap),
             docx_bytes=docx_bytes,
             targets=analysis.TARGETS,
+            custom_body=custom_body,
         )
         log.status = "sent"
         db.add(log)
@@ -545,14 +559,86 @@ def _email_one(period: models.Period, snap: models.SolverSnapshot,
         return EmailSendResult(name=snap.name, status="failed", detail=str(e))
 
 
-@router.post("/api/periods/{period_id}/solvers/{name}/email")
-def email_one_solver(
+class EmailPayload(BaseModel):
+    custom_body: Optional[str] = None  # admin-edited text; None = auto-generate
+
+
+@router.get("/api/periods/{period_id}/solvers/{name}/email-preview")
+def email_preview(
     period_id: int,
     name: str,
     db: Session = Depends(get_db),
     _: str = Depends(auth.require_admin),
 ):
-    """Send the coaching email for one solver. Returns an error if no email is on file."""
+    """Return the subject + body that would be sent, ready for the admin to edit."""
+    import app.emails as emails
+    period = db.get(models.Period, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+    snap = db.scalar(select(models.SolverSnapshot).where(
+        models.SolverSnapshot.period_id == period_id,
+        models.SolverSnapshot.name == name,
+    ))
+    if not snap:
+        raise HTTPException(status_code=404, detail="Solver not in this period")
+    email_row = db.scalar(select(models.SolverEmail).where(models.SolverEmail.name == name))
+    preview = emails.build_preview(snapshot_to_dict(snap), period.label, analysis.TARGETS)
+    preview["email_on_file"] = email_row.email if email_row else None
+    preview["name"] = name
+    return preview
+
+
+@router.get("/api/periods/{period_id}/email-template/{focus}")
+def email_template(
+    period_id: int,
+    focus: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Return an editable bulk template for a focus area (time / submission / recognition).
+
+    The template uses {{tokens}} that are replaced per-solver at send time.
+    The admin edits this once and it applies to every solver with that focus.
+    """
+    import app.emails as emails
+    if focus not in ("time", "submission", "recognition"):
+        raise HTTPException(status_code=400, detail="focus must be time, submission, or recognition")
+    period = db.get(models.Period, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    tpl = emails.build_template(focus, analysis.TARGETS)
+
+    # Count how many solvers would receive this
+    snaps = period.snapshots
+    if focus == "recognition":
+        count = sum(1 for s in snaps if (s.focus_areas or []) == ["strong"] or "strong" in (s.focus_areas or []))
+    else:
+        count = sum(1 for s in snaps if focus in (s.focus_areas or []))
+    tpl["solver_count"] = count
+    tpl["period_label"] = period.label
+    tpl["token_help"] = (
+        "{{name}} full name · {{first_name}} first name only · {{volume}} jobs completed · "
+        "{{avg_tat}} avg TAT · {{tat_target}} target · {{assigned}} assigned · "
+        "{{completed}} completed · {{pending}} pending · {{submission_pct}} sub% · "
+        "{{rating}} client rating · {{period_label}} period name"
+    )
+    return tpl
+
+
+@router.post("/api/periods/{period_id}/solvers/{name}/email")
+
+def email_one_solver(
+    period_id: int,
+    name: str,
+    payload: EmailPayload = EmailPayload(),
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """Send the coaching/recognition email for one solver.
+
+    Pass `custom_body` in the JSON body to override the auto-generated text.
+    """
     period = db.get(models.Period, period_id)
     if not period:
         raise HTTPException(status_code=404, detail="Period not found")
@@ -569,26 +655,34 @@ def email_one_solver(
             detail=f"No email on file for {name}. Add one in Solver Emails first.",
         )
 
-    result = _email_one(period, snap, email_row.email, trigger="manual", db=db)
+    result = _email_one(
+        period, snap, email_row.email,
+        trigger="manual",
+        db=db,
+        custom_body=payload.custom_body,
+    )
     if result.status == "failed":
         raise HTTPException(status_code=500, detail=result.detail)
     return result
 
+class BulkEmailPayload(BaseModel):
+    # Optional edited templates keyed by focus area: {"time": "...", "submission": "...", "recognition": "..."}
+    # Values are plain-text bodies with {{tokens}} already resolved or left for per-solver resolution.
+    custom_templates: dict[str, str] = {}
 
 @router.post("/api/periods/{period_id}/send-coaching-emails")
 def bulk_send_coaching_emails(
     period_id: int,
+    payload: BulkEmailPayload = BulkEmailPayload(),
     db: Session = Depends(get_db),
     _: str = Depends(auth.require_admin),
 ):
     """Send coaching emails to every solver who didn't meet their targets this period.
 
-    "Didn't meet targets" = has at least one classification = needs_work
-    (i.e. any focus area set — time, submission, or rating).
-
-    Skips solvers without an email on file and reports them so the admin
-    can add the missing addresses.
+    Pass `custom_templates` to override the auto-generated body per focus area.
+    Templates may contain {{tokens}} — they are resolved per-solver before sending.
     """
+    import app.emails as emails
     period = db.get(models.Period, period_id)
     if not period:
         raise HTTPException(status_code=404, detail="Period not found")
@@ -602,7 +696,6 @@ def bulk_send_coaching_emails(
     results: list[EmailSendResult] = []
     for snap in snaps:
         focus = snap.focus_areas or []
-        # Strong performers (no needs_work flags) are excluded from the bulk send
         if not focus or focus == ["strong"]:
             results.append(EmailSendResult(
                 name=snap.name, status="skipped_strong",
@@ -616,8 +709,19 @@ def bulk_send_coaching_emails(
                 detail="add email in Solver Emails"
             ))
             continue
-        # Send
-        result = _email_one(period, snap, to_email, trigger="bulk_targets_missed", db=db)
+        # Resolve custom template if provided: pick the most specific focus area
+        custom_body = None
+        for f in focus:
+            if f in payload.custom_templates:
+                tpl = payload.custom_templates[f]
+                custom_body = emails.apply_template(tpl, snapshot_to_dict(snap), period.label)
+                break
+        result = _email_one(
+            period, snap, to_email,
+            trigger="bulk_targets_missed",
+            db=db,
+            custom_body=custom_body,
+        )
         results.append(result)
 
     return {
@@ -636,18 +740,15 @@ def bulk_send_coaching_emails(
 @router.post("/api/periods/{period_id}/send-recognition-emails")
 def bulk_send_recognition_emails(
     period_id: int,
+    payload: BulkEmailPayload = BulkEmailPayload(),
     db: Session = Depends(get_db),
     _: str = Depends(auth.require_admin),
 ):
     """Send recognition emails to every solver who hit all targets this period.
 
-    "Strong performer" = focus_areas == ["strong"] (no needs_work classifications).
-    Subject line, body, and attachment filename all signal "recognition" not
-    "coaching" — same delivery flow, different copy.
-
-    Skips solvers without an email on file and reports them so the admin
-    can add the missing addresses.
+    Pass `custom_templates` with key "recognition" to override the body.
     """
+    import app.emails as emails
     period = db.get(models.Period, period_id)
     if not period:
         raise HTTPException(status_code=404, detail="Period not found")
@@ -675,7 +776,15 @@ def bulk_send_recognition_emails(
                 detail="add email in Solver Emails"
             ))
             continue
-        result = _email_one(period, snap, to_email, trigger="bulk_recognition", db=db)
+        result = _email_one(
+            period, snap, to_email,
+            trigger="bulk_recognition",
+            db=db,
+            custom_body=emails.apply_template(
+                payload.custom_templates["recognition"],
+                snapshot_to_dict(snap), period.label
+            ) if "recognition" in payload.custom_templates else None,
+        )
         results.append(result)
 
     return {
