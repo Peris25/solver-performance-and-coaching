@@ -32,6 +32,8 @@ class Period(Base):
     total_jobs_initiated_by_solvers = Column(Integer, default=0)
     team_submission_rate = Column(Float, nullable=True)
     median_submission_rate = Column(Float, nullable=True)
+    avg_total_tat_hrs = Column(Float, nullable=True)
+    median_total_tat_hrs = Column(Float, nullable=True)
     avg_response_tat_hrs = Column(Float, nullable=True)
     median_response_tat_hrs = Column(Float, nullable=True)
     avg_onsite_tat_hrs = Column(Float, nullable=True)
@@ -65,6 +67,8 @@ class SolverSnapshot(Base):
     # Computed rates / averages
     submission_rate = Column(Float, nullable=True)
     approval_rate = Column(Float, nullable=True)
+    avg_total_tat_hrs = Column(Float, nullable=True)
+    median_total_tat_hrs = Column(Float, nullable=True)
     avg_response_tat_hrs = Column(Float, nullable=True)
     median_response_tat_hrs = Column(Float, nullable=True)
     avg_onsite_tat_hrs = Column(Float, nullable=True)
