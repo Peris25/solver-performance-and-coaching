@@ -25,14 +25,15 @@ import pandas as pd
 # TARGETS — the single source of truth for "did this solver meet the bar?"
 # ---------------------------------------------------------------------------
 TARGETS = {
-    "response_tat_hours_max": 10.0,    # schedule -> valuation, target ≤ 10h
-    "onsite_tat_hours_max": 0.5,       # 30 minutes on-site
+    "total_tat_hours_max": 10.0,       # assignment -> submission, target ≤ 10h (primary metric)
+    "response_tat_hours_max": 9.5,     # schedule -> valuation, target ≤ 9h 30min (sub-component)
+    "onsite_tat_hours_max": 0.5,       # 30 minutes on-site (sub-component)
     "rating_min": 4.5,                  # client rating ≥ 4.5/5
     "volume_min_monthly": 60,           # at least 60 valuations/month
     "submission_rate_min": 0.85,        # 85% of assigned closed as valued
     "reject_rate_max": 0.05,            # ≤ 5% of submitted reports rejected (when data available)
     "min_ratings_for_judgement": 3,     # need at least 3 ratings to judge
-    "stuck_job_hours": 72.0,            # any job > 72h since scheduled is "stuck"
+    "stuck_job_hours": 72.0,            # any job > 72h since assigned is "stuck"
     # Region staffing thresholds (jobs/solver/month)
     "regional_overload_jobs_per_solver": 90,   # > 90 jobs/solver = overloaded
     "regional_under_jobs_per_solver": 30,      # < 30 = under-utilised
@@ -44,10 +45,29 @@ TARGETS = {
 # ---------------------------------------------------------------------------
 
 def classify_solver(stats: dict) -> dict:
-    """Each metric -> 'strong' | 'on_track' | 'needs_work' | 'insufficient_data'."""
+    """Each metric -> 'strong' | 'on_track' | 'needs_work' | 'insufficient_data'.
+
+    `total_tat` (assignment -> submission, average) is the primary TAT signal,
+    judged against 10h target. `response_tat` and `onsite_tat` are kept as
+    breakdown sub-components shown in the coaching doc.
+    """
     out = {}
 
-    rtat = stats.get("median_response_tat_hrs")
+    # PRIMARY: total TAT (assigned -> submitted), average
+    total_tat = stats.get("avg_total_tat_hrs")
+    if total_tat is None or pd.isna(total_tat):
+        out["total_tat"] = "insufficient_data"
+    elif total_tat <= TARGETS["total_tat_hours_max"] * 0.5:
+        out["total_tat"] = "strong"
+    elif total_tat <= TARGETS["total_tat_hours_max"]:
+        out["total_tat"] = "on_track"
+    elif total_tat <= TARGETS["total_tat_hours_max"] * 1.5:
+        out["total_tat"] = "on_track"
+    else:
+        out["total_tat"] = "needs_work"
+
+    # Sub-component: response TAT (schedule -> submitted)
+    rtat = stats.get("avg_response_tat_hrs")
     if rtat is None or pd.isna(rtat):
         out["response_tat"] = "insufficient_data"
     elif rtat <= TARGETS["response_tat_hours_max"] * 0.5:
@@ -59,6 +79,7 @@ def classify_solver(stats: dict) -> dict:
     else:
         out["response_tat"] = "needs_work"
 
+    # Sub-component: on-site TAT
     otat = stats.get("avg_onsite_tat_hrs")
     if otat is None or pd.isna(otat):
         out["onsite_tat"] = "insufficient_data"
@@ -112,7 +133,7 @@ def classify_solver(stats: dict) -> dict:
 def pick_training_modules(classifications: dict) -> list[str]:
     needs = {a for a, s in classifications.items() if s == "needs_work"}
     picked = []
-    if needs & {"response_tat", "onsite_tat"}:
+    if needs & {"total_tat", "response_tat", "onsite_tat"}:
         picked.append("time")
     if "submission_rate" in needs:
         picked.append("submission")
@@ -123,8 +144,9 @@ def pick_training_modules(classifications: dict) -> list[str]:
 
 def infer_focus_areas(classifications: dict) -> list[str]:
     areas = []
-    if classifications.get("response_tat") == "needs_work" or \
-       classifications.get("onsite_tat") == "needs_work":
+    if (classifications.get("total_tat") == "needs_work"
+        or classifications.get("response_tat") == "needs_work"
+        or classifications.get("onsite_tat") == "needs_work"):
         areas.append("time")
     if classifications.get("submission_rate") == "needs_work":
         areas.append("submission")
@@ -212,9 +234,9 @@ def compute_talent_grid(stats: dict) -> dict | None:
     components = {}
 
     # --- Performance axis: TAT + submission rate + (optional) reject rate ---
-    rtat_score = _score_lower_better(
-        stats.get("median_response_tat_hrs"),
-        TARGETS["response_tat_hours_max"],
+    tat_score = _score_lower_better(
+        stats.get("avg_total_tat_hrs"),
+        TARGETS["total_tat_hours_max"],
     )
     sub_score = _score_higher_better(
         stats.get("submission_rate"),
@@ -225,7 +247,7 @@ def compute_talent_grid(stats: dict) -> dict | None:
     reject_target = TARGETS.get("reject_rate_max", 0.05)
     reject_score = _score_lower_better(stats.get("reject_rate"), reject_target)
 
-    perf_components = {"response_tat": rtat_score, "submission_rate": sub_score, "reject_rate": reject_score}
+    perf_components = {"total_tat": tat_score, "submission_rate": sub_score, "reject_rate": reject_score}
     perf_available = [s for s in perf_components.values() if s is not None]
     if not perf_available:
         return None
@@ -388,51 +410,74 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         if col not in cr.columns:
             raise ValueError(f"CLIENT RATING missing column: {col}")
 
-    # TATs on TOTAL VALUED
-    tv = tv.copy()
-    tv["_sched_or_req"] = tv["Schedule_date"].fillna(tv["Requested_Date"])
-    tv["response_tat_hrs"] = (
-        tv["Valuation_Date"] - tv["_sched_or_req"]
+    # ------------------------------------------------------------------
+    # TAT — computed from SOLVERS BASKET (jobs assigned to each solver
+    # this period, regardless of whether they were ultimately approved).
+    # PRIMARY metric: avg_total_tat_hrs = mean of (Valuation_Date − Requested_Date)
+    # over basket rows where Request_Status == "Completed", capped at the
+    # stuck-job threshold so multi-day outliers don't swamp the average.
+    # ------------------------------------------------------------------
+    sb = sb.copy()
+    sb["_is_pending"] = sb["Request_Status"] == "Solver accept"
+    sb["_is_completed"] = sb["Request_Status"] == "Completed"
+
+    sb["total_tat_hrs"] = (
+        sb["Valuation_Date"] - sb["Requested_Date"]
     ).dt.total_seconds() / 3600
-    tv["onsite_tat_hrs"] = (
-        tv["Valuation_Date"] - tv["Valuation_Start"]
+    sb["response_tat_hrs"] = (
+        sb["Valuation_Date"] - sb["Schedule_date"].fillna(sb["Requested_Date"])
+    ).dt.total_seconds() / 3600
+    sb["onsite_tat_hrs"] = (
+        sb["Valuation_Date"] - sb["Valuation_Start"]
     ).dt.total_seconds() / 3600
 
-    approved = tv[tv["Approval_Status"] == "Approved"].copy()
-    approved = approved[
-        (approved["onsite_tat_hrs"] >= 0)
-        & (approved["onsite_tat_hrs"] < 24)
-        & (approved["response_tat_hrs"] >= 0)
+    completed_basket = sb[sb["_is_completed"]].copy()
+    completed_basket = completed_basket[
+        (completed_basket["total_tat_hrs"] >= 0)
+        & (completed_basket["onsite_tat_hrs"] >= 0)
+        & (completed_basket["onsite_tat_hrs"] < 24)
     ]
 
     stuck_threshold = TARGETS["stuck_job_hours"]
-    per_solver_tv = approved.groupby("Solver").agg(
+    # Average TAT excludes "stuck" outliers (>72h) so a few extreme cases
+    # don't dominate. Those still feed stuck_job_count below.
+    tat_sample = completed_basket[completed_basket["total_tat_hrs"] <= stuck_threshold]
+
+    per_solver_tat = tat_sample.groupby("Solver").agg(
+        avg_total_tat_hrs=("total_tat_hrs", "mean"),
+        median_total_tat_hrs=("total_tat_hrs", "median"),
         avg_response_tat_hrs=("response_tat_hrs", "mean"),
         median_response_tat_hrs=("response_tat_hrs", "median"),
         avg_onsite_tat_hrs=("onsite_tat_hrs", "mean"),
         median_onsite_tat_hrs=("onsite_tat_hrs", "median"),
-        approved_count=("response_tat_hrs", "count"),
+        completed_count=("total_tat_hrs", "count"),
     )
 
-    stuck = approved.assign(_stuck=approved["response_tat_hrs"] > stuck_threshold) \
+    # Stuck jobs: completed basket rows where TAT > 72h
+    stuck = completed_basket.assign(_stuck=completed_basket["total_tat_hrs"] > stuck_threshold) \
         .groupby("Solver")["_stuck"].agg(["sum", "count"])
     stuck.columns = ["stuck_job_count", "_t"]
     stuck["stuck_job_rate"] = stuck["stuck_job_count"] / stuck["_t"]
     stuck = stuck.drop(columns=["_t"])
-    per_solver_tv = per_solver_tv.join(stuck, how="left")
+    per_solver_tat = per_solver_tat.join(stuck, how="left")
+
+    # ------------------------------------------------------------------
+    # Volume = how many valuations the solver actually completed
+    # (count of rows in TOTAL VALUED). Approval rate also from TOTAL VALUED.
+    # ------------------------------------------------------------------
+    tv = tv.copy()
+    valued_volume = tv[tv["Solver"].notna()].groupby("Solver").size().rename("tv_volume")
 
     approval = tv[tv["Solver"].notna()].groupby("Solver").agg(
         total_attempts=("Approval_Status", "count"),
         approved_total=("Approval_Status", lambda s: (s == "Approved").sum()),
     )
     approval["approval_rate"] = approval["approved_total"] / approval["total_attempts"]
-    per_solver_tv = per_solver_tv.join(approval[["total_attempts", "approval_rate"]], how="outer")
+    per_solver_tv = approval[["total_attempts", "approval_rate"]].join(valued_volume, how="outer")
 
-    # SOLVERS BASKET: assigned / pending / completed
-    sb = sb.copy()
-    sb["_is_pending"] = sb["Request_Status"] == "Solver accept"
-    sb["_is_completed"] = sb["Request_Status"] == "Completed"
-
+    # ------------------------------------------------------------------
+    # SOLVERS BASKET aggregates — submission rate, assigned, pending
+    # ------------------------------------------------------------------
     basket = sb[sb["Solver"].notna()].groupby("Solver").agg(
         assigned_count=("Vehicle_reg", "count"),
         valued_count=("_is_completed", "sum"),
@@ -475,13 +520,17 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
     else:
         pending_reasons = pd.DataFrame()
 
-    # Merge
-    summary = per_solver_tv.join(basket, how="outer")
+    # Merge: TAT (from basket) + TV-derived (volume from TOTAL VALUED, approval rate)
+    # + basket counts + ratings + self-initiated
+    summary = per_solver_tat.join(per_solver_tv, how="outer")
+    summary = summary.join(basket, how="outer")
     summary = summary.join(ratings_summary, how="outer")
     summary = summary.join(initiated, how="outer")
 
-    summary["volume"] = summary["valued_count"].fillna(0).astype(int)
-    summary["approved_count"] = summary["approved_count"].fillna(0).astype(int)
+    # Volume = count from TOTAL VALUED (the actual valuations they completed).
+    # If a solver has basket-completed but no TOTAL VALUED rows yet (e.g. timing
+    # gap), fall back to basket valued_count so they don't show 0.
+    summary["volume"] = summary["tv_volume"].fillna(summary.get("valued_count", 0)).fillna(0).astype(int)
     summary["total_attempts"] = summary["total_attempts"].fillna(0).astype(int)
     summary["valued_count"] = summary["valued_count"].fillna(0).astype(int)
     summary["assigned_count"] = summary["assigned_count"].fillna(0).astype(int)
@@ -490,17 +539,20 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
     summary["stuck_job_count"] = summary["stuck_job_count"].fillna(0).astype(int)
     summary["jobs_initiated"] = summary["jobs_initiated"].fillna(0).astype(int)
 
-    total_valued = int(summary["valued_count"].sum())
+    total_valued = int(summary["valued_count"].sum())       # basket completed
+    total_volume = int(summary["volume"].sum())              # TOTAL VALUED rows
     total_pending = int(summary["pending_count"].sum())
     total_assigned = int(summary["assigned_count"].sum())
     total_initiated = int(summary["jobs_initiated"].sum())
     team_submission = (total_valued / total_assigned) if total_assigned else None
 
     team = {
-        "avg_response_tat_hrs": float(approved["response_tat_hrs"].mean()) if len(approved) else None,
-        "median_response_tat_hrs": float(approved["response_tat_hrs"].median()) if len(approved) else None,
-        "avg_onsite_tat_hrs": float(approved["onsite_tat_hrs"].mean()) if len(approved) else None,
-        "median_onsite_tat_hrs": float(approved["onsite_tat_hrs"].median()) if len(approved) else None,
+        "avg_total_tat_hrs": float(tat_sample["total_tat_hrs"].mean()) if len(tat_sample) else None,
+        "median_total_tat_hrs": float(tat_sample["total_tat_hrs"].median()) if len(tat_sample) else None,
+        "avg_response_tat_hrs": float(tat_sample["response_tat_hrs"].mean()) if len(tat_sample) else None,
+        "median_response_tat_hrs": float(tat_sample["response_tat_hrs"].median()) if len(tat_sample) else None,
+        "avg_onsite_tat_hrs": float(tat_sample["onsite_tat_hrs"].mean()) if len(tat_sample) else None,
+        "median_onsite_tat_hrs": float(tat_sample["onsite_tat_hrs"].median()) if len(tat_sample) else None,
         "avg_rating": float(cr_valid["rating"].mean()) if len(cr_valid) else None,
         "median_rating": float(cr_valid["rating"].median()) if len(cr_valid) else None,
         "avg_volume": float(summary["volume"].mean()) if len(summary) else 0.0,
@@ -509,13 +561,13 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         "median_submission_rate": float(summary["submission_rate"].dropna().median())
             if summary["submission_rate"].notna().any() else None,
         "total_solvers": int(len(summary)),
-        "total_valuations": total_valued,
+        "total_valuations": total_volume,                   # from TOTAL VALUED
         "total_jobs_assigned": total_assigned,
         "total_jobs_pending": total_pending,
         "total_jobs_initiated_by_solvers": total_initiated,
         "total_ratings_received": int(len(cr_valid)),
-        "pct_stuck_jobs_team": float((approved["response_tat_hrs"] > stuck_threshold).mean())
-            if len(approved) else 0.0,
+        "pct_stuck_jobs_team": float((completed_basket["total_tat_hrs"] > stuck_threshold).mean())
+            if len(completed_basket) else 0.0,
     }
 
     def _f(v):
@@ -535,6 +587,8 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
             "assigned_count": int(row["assigned_count"]),
             "jobs_initiated": int(row["jobs_initiated"]),
             "submission_rate": _f(row.get("submission_rate")),
+            "avg_total_tat_hrs": _f(row.get("avg_total_tat_hrs")),
+            "median_total_tat_hrs": _f(row.get("median_total_tat_hrs")),
             "avg_response_tat_hrs": _f(row.get("avg_response_tat_hrs")),
             "median_response_tat_hrs": _f(row.get("median_response_tat_hrs")),
             "avg_onsite_tat_hrs": _f(row.get("avg_onsite_tat_hrs")),
@@ -593,7 +647,8 @@ def compare_snapshots(current: dict, previous: dict) -> dict:
         return "improved" if d > 0 else "worsened"
 
     spec = [
-        ("response_tat", True, "median_response_tat_hrs"),
+        ("total_tat", True, "avg_total_tat_hrs"),
+        ("response_tat", True, "avg_response_tat_hrs"),
         ("onsite_tat", True, "avg_onsite_tat_hrs"),
         ("submission_rate", False, "submission_rate"),
         ("volume", False, "volume"),
@@ -620,6 +675,7 @@ def compare_snapshots(current: dict, previous: dict) -> dict:
 
     # Map internal keys to human-readable labels for the headline
     _LABELS = {
+        "total_tat": "average time per job",
         "response_tat": "response TAT",
         "onsite_tat": "on-site TAT",
         "submission_rate": "submission rate",
@@ -667,11 +723,13 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
         total_pending = sum(s["pending_count"] for s in snaps)
         total_initiated = sum(s["jobs_initiated"] for s in snaps)
 
-        rtats = [s["median_response_tat_hrs"] for s in snaps if s["median_response_tat_hrs"] is not None]
+        ttats = [s["avg_total_tat_hrs"] for s in snaps if s.get("avg_total_tat_hrs") is not None]
+        rtats = [s["avg_response_tat_hrs"] for s in snaps if s["avg_response_tat_hrs"] is not None]
         otats = [s["avg_onsite_tat_hrs"] for s in snaps if s["avg_onsite_tat_hrs"] is not None]
         ratings = [s["avg_rating"] for s in snaps if s["avg_rating"] is not None
                    and s["n_ratings"] >= TARGETS["min_ratings_for_judgement"]]
 
+        avg_total_tat = sum(ttats) / len(ttats) if ttats else None
         avg_rtat = sum(rtats) / len(rtats) if rtats else None
         avg_otat = sum(otats) / len(otats) if otats else None
         avg_rating = sum(ratings) / len(ratings) if ratings else None
@@ -685,11 +743,12 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
         else:
             staffing = "balanced"
 
-        if submission_rate is None or avg_rtat is None:
+        # Performance judged on TOTAL TAT (the primary metric) + submission rate
+        if submission_rate is None or avg_total_tat is None:
             performance = "insufficient_data"
-        elif submission_rate >= TARGETS["submission_rate_min"] and avg_rtat <= TARGETS["response_tat_hours_max"]:
+        elif submission_rate >= TARGETS["submission_rate_min"] and avg_total_tat <= TARGETS["total_tat_hours_max"]:
             performance = "strong"
-        elif submission_rate < 0.70 or avg_rtat > TARGETS["response_tat_hours_max"] * 1.5:
+        elif submission_rate < 0.70 or avg_total_tat > TARGETS["total_tat_hours_max"] * 1.5:
             performance = "needs_improvement"
         else:
             performance = "on_track"
@@ -712,6 +771,7 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
             "total_jobs_initiated": total_initiated,
             "jobs_per_solver": round(jobs_per_solver, 1),
             "submission_rate": submission_rate,
+            "avg_total_tat_hrs": avg_total_tat,
             "avg_response_tat_hrs": avg_rtat,
             "avg_onsite_tat_hrs": avg_otat,
             "avg_rating": avg_rating,
