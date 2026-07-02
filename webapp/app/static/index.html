@@ -950,6 +950,29 @@ td.num.dim { color: var(--ink-300); }
 .tg-badge.tg-warn  { background: #FFE8D6; color: #8C4810; }
 .tg-badge.tg-risk  { background: var(--brand-soft); color: var(--brand-dark); }
 
+/* ============================================================
+   EMAIL EDITOR MODAL
+   ============================================================ */
+.editor-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 18px 9px;
+  border: none; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 600;
+  color: var(--ink-400);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color .12s, border-color .12s;
+}
+.editor-tab:hover { color: var(--ink-700); }
+.editor-tab.active { color: var(--ink-900); border-bottom-color: var(--ink-900); }
+.count-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--ink-100); color: var(--ink-700);
+  border-radius: 9px; font-size: 11px; font-weight: 700;
+}
+.editor-tab.active .count-pill { background: var(--ink-900); color: white; }
+
 </style>
 </head>
 <body>
@@ -1012,8 +1035,8 @@ td.num.dim { color: var(--ink-300); }
     <div class="page-subtitle" id="pageSubtitle">Loading...</div>
   </div>
   <div class="page-actions">
-    <button class="btn" id="bulkRecognitionBtn" style="display:none">Email recognition to strong performers</button>
-    <button class="btn primary" id="bulkSendBtn" style="display:none">Email coaching to solvers missing target</button>
+    <button class="btn" id="bulkRecognitionBtn" style="display:none">✉ Recognition emails</button>
+    <button class="btn primary" id="bulkSendBtn" style="display:none">✉ Coaching emails</button>
   </div>
 </div>
 
@@ -1054,9 +1077,9 @@ td.num.dim { color: var(--ink-300); }
       <div class="delta"><span class="badge" id="kpi-sub-badge">—</span><span id="kpi-sub-sub">target 85%</span></div>
     </div>
     <div class="kpi">
-      <div class="label">Response TAT</div>
+      <div class="label">Avg time per job</div>
       <div class="value tnum"><span id="kpi-tat">—</span><span class="unit">h</span></div>
-      <div class="delta"><span class="badge" id="kpi-tat-badge">—</span><span id="kpi-tat-sub">target ≤ 9h 30min</span></div>
+      <div class="delta"><span class="badge" id="kpi-tat-badge">—</span><span id="kpi-tat-sub">target ≤ 10h</span></div>
     </div>
     <div class="kpi">
       <div class="label">Client rating</div>
@@ -1155,7 +1178,7 @@ td.num.dim { color: var(--ink-300); }
     </div>
     <div class="dist-grid">
       <div class="dist-card">
-        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 9.5</div></div>
+        <div class="header"><div class="title">Average time per job (hrs)</div><div class="target">target ≤ 10</div></div>
         <canvas id="dist-tat"></canvas>
       </div>
       <div class="dist-card">
@@ -1230,8 +1253,7 @@ td.num.dim { color: var(--ink-300); }
               <th data-sort="volume" style="text-align:right">Valued</th>
               <th data-sort="assigned_count" style="text-align:right">Assigned</th>
               <th data-sort="jobs_initiated" style="text-align:right">Initiated</th>
-              <th data-sort="response_tat" style="text-align:right">Response TAT</th>
-              <th data-sort="onsite_tat" style="text-align:right">On-site</th>
+              <th data-sort="total_tat" style="text-align:right">Avg TAT</th>
               <th data-sort="submission_rate" style="text-align:right">Submission</th>
               <th data-sort="rating" style="text-align:right">Rating</th>
               <th>Grid</th>
@@ -1279,8 +1301,75 @@ td.num.dim { color: var(--ink-300); }
   </div>
 </div>
 
-<!-- Region drill-down drawer -->
-<aside class="drawer" id="regionDrawer">
+<!-- Email composer/editor modal — for both single-solver and bulk editing -->
+<div class="modal-backdrop" id="emailEditorModal" style="display:none">
+  <div class="modal" style="max-width:760px; width:95vw">
+    <div class="modal-header">
+      <div>
+        <h2 id="emailEditorTitle">Edit email</h2>
+        <div class="sub" id="emailEditorSubtitle">Review and edit before sending</div>
+      </div>
+      <button class="btn" onclick="closeEmailEditor()">×</button>
+    </div>
+
+    <!-- Tab bar: shown only for bulk editing -->
+    <div id="emailEditorTabs" style="display:none; border-bottom:1px solid var(--ink-100); padding:0 24px">
+      <button class="editor-tab active" data-tab="time" onclick="switchEditorTab('time')">
+        TAT coaching
+        <span class="count-pill" id="tabCountTime">0</span>
+      </button>
+      <button class="editor-tab" data-tab="submission" onclick="switchEditorTab('submission')">
+        Submission coaching
+        <span class="count-pill" id="tabCountSubmission">0</span>
+      </button>
+      <button class="editor-tab" data-tab="recognition" onclick="switchEditorTab('recognition')">
+        Recognition
+        <span class="count-pill" id="tabCountRecognition">0</span>
+      </button>
+    </div>
+
+    <div class="modal-body" style="padding:0">
+
+      <!-- Token help bar (bulk mode only) -->
+      <div id="tokenHelp" style="display:none; background:var(--ink-50); padding:10px 24px; font-size:12px; color:var(--ink-500); border-bottom:1px solid var(--ink-100); line-height:1.6">
+        <strong>Available tokens:</strong>
+        <span id="tokenHelpText"></span>
+      </div>
+
+      <!-- Subject line (single-solver only) -->
+      <div id="editorSubjectRow" style="padding:16px 24px 0; border-bottom:1px solid var(--ink-100)">
+        <label style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-500)">Subject</label>
+        <div id="editorSubjectText" style="margin-top:4px; font-size:14px; color:var(--ink-700); padding:8px 0"></div>
+      </div>
+
+      <!-- Main textarea -->
+      <div style="padding:16px 24px">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+          <label style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-500)">Message body</label>
+          <button class="btn" style="font-size:11px; padding:3px 10px" onclick="resetEmailBody()">Reset to default</button>
+        </div>
+        <textarea id="emailBodyTextarea"
+          style="width:100%; box-sizing:border-box; height:340px; font-size:13px; line-height:1.7;
+                 font-family:-apple-system,system-ui,sans-serif; border:1px solid var(--ink-200);
+                 border-radius:6px; padding:12px; resize:vertical; color:var(--ink-900)"
+          placeholder="Loading..."></textarea>
+        <div id="editorBulkNote" style="display:none; margin-top:8px; font-size:12px; color:var(--ink-500); font-style:italic">
+          This message will be personalised for each solver when sent — tokens like {{first_name}} and {{avg_tat}} are replaced automatically.
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="justify-content:space-between">
+      <div style="font-size:13px; color:var(--ink-500)" id="editorRecipientNote"></div>
+      <div style="display:flex; gap:8px">
+        <button class="btn" onclick="closeEmailEditor()">Cancel</button>
+        <button class="btn primary" id="editorSendBtn" onclick="sendFromEditor()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
   <div class="drawer-header">
     <button class="drawer-close" id="regionDrawerClose">×</button>
     <h2 id="region-drawer-name">—</h2>
@@ -1380,6 +1469,7 @@ let charts = {};
 let solverEmails = {};   // { name: email }
 
 const TARGETS_DEFAULT = {
+  total_tat_hours_max: 10.0,
   response_tat_hours_max: 9.5,
   onsite_tat_hours_max: 0.5,
   rating_min: 4.5,
@@ -1543,9 +1633,9 @@ function renderKPIs() {
     `team rate · median solver ${fmtPct(t.median_submission_rate)}`,
     (v) => v.toFixed(1), [85, 75]);
 
-  setKPI("kpi-tat", t.median_response_tat_hrs, 9.5, true,
-    "median across solvers",
-    (v) => v.toFixed(1), [9.5, 19]);
+  setKPI("kpi-tat", t.avg_total_tat_hrs, 10, true,
+    "average across team",
+    (v) => v.toFixed(1), [10, 20]);
 
   setKPI("kpi-rating", t.avg_rating, 4.5, false,
     "team mean rating",
@@ -1574,9 +1664,9 @@ function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
 
 function renderDistributions() {
   const solvers = currentPeriod.solvers;
-  drawDistribution("dist-tat", ["0-5h", "5-9.5h", "9.5-24h", "24-72h", "72h+"],
-    solvers.map(s => s.median_response_tat_hrs),
-    [0, 5, 9.5, 24, 72, Infinity], [0, 9.5]);
+  drawDistribution("dist-tat", ["0-5h", "5-10h", "10-24h", "24-72h", "72h+"],
+    solvers.map(s => s.avg_total_tat_hrs),
+    [0, 5, 10, 24, 72, Infinity], [0, 10]);
   drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
     solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
     [0, 15, 30, 45, 60, Infinity], [0, 30]);
@@ -1774,8 +1864,7 @@ function renderTable() {
       case "volume": return s.volume;
       case "assigned_count": return s.assigned_count;
       case "jobs_initiated": return s.jobs_initiated || 0;
-      case "response_tat": return s.median_response_tat_hrs ?? Infinity;
-      case "onsite_tat": return s.avg_onsite_tat_hrs ?? Infinity;
+      case "total_tat": return s.avg_total_tat_hrs ?? Infinity;
       case "submission_rate": return s.submission_rate ?? -1;
       case "rating": return s.avg_rating ?? -1;
       default: return 0;
@@ -1801,8 +1890,7 @@ function renderTable() {
       <td class="num" style="text-align:right">${fmtInt(s.volume)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.assigned_count)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.jobs_initiated || 0)}</td>
-      <td class="num" style="text-align:right">${metricCell(s.median_response_tat_hrs, "h", 9.5, true, 24)}</td>
-      <td class="num" style="text-align:right">${metricCell(s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null, "m", 30, true, 60)}</td>
+      <td class="num" style="text-align:right">${metricCell(s.avg_total_tat_hrs, "h", 10, true, 24)}</td>
       <td class="num" style="text-align:right">${metricCell(s.submission_rate != null ? s.submission_rate * 100 : null, "%", 85, false, 100)}</td>
       <td class="num" style="text-align:right">${metricCell(s.avg_rating, "", 4.5, false, 5)}</td>
       <td>${talentGridBadge(s.talent_grid)}</td>
@@ -1812,7 +1900,7 @@ function renderTable() {
     tbody.appendChild(tr);
   }
   if (!solvers.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
   }
 }
 
@@ -1872,8 +1960,7 @@ async function openDrawer(s) {
     <div class="drawer-section">
       <h3>Performance vs target</h3>
       <div class="scorecard-bars">
-        ${scoreBar("Response TAT", s.median_response_tat_hrs, t.median_response_tat_hrs, targets.response_tat_hours_max, true, 24, "h")}
-        ${scoreBar("On-site TAT", (s.avg_onsite_tat_hrs ?? 0) * 60, (t.avg_onsite_tat_hrs ?? 0) * 60, targets.onsite_tat_hours_max * 60, true, 60, "m")}
+        ${scoreBar("Avg time per job", s.avg_total_tat_hrs, t.avg_total_tat_hrs, targets.total_tat_hours_max, true, 24, "h")}
         ${scoreBar("Submission rate", (s.submission_rate ?? 0) * 100, (t.median_submission_rate ?? 0) * 100, targets.submission_rate_min * 100, false, 100, "%")}
         ${scoreBar("Client rating", s.avg_rating, t.avg_rating, targets.rating_min, false, 5, "")}
       </div>
@@ -1886,11 +1973,11 @@ async function openDrawer(s) {
         <div class="numbox"><div class="lbl">Assigned</div><div class="val tnum">${fmtInt(s.assigned_count)}</div><div class="sub">${s.pending_count} pending</div></div>
         <div class="numbox"><div class="lbl">Initiated</div><div class="val tnum">${fmtInt(s.jobs_initiated || 0)}</div><div class="sub">${s.assigned_count ? Math.round((s.jobs_initiated||0)/s.assigned_count*100) : 0}% of assigned</div></div>
         <div class="numbox"><div class="lbl">Submission rate</div><div class="val tnum">${fmtPct(s.submission_rate)}</div><div class="sub">${s.valued_count} of ${s.assigned_count}</div></div>
-        <div class="numbox"><div class="lbl">Response TAT (median)</div><div class="val tnum">${fmtHrs(s.median_response_tat_hrs)}</div><div class="sub">mean ${fmtHrs(s.avg_response_tat_hrs)}</div></div>
-        <div class="numbox"><div class="lbl">On-site TAT (avg)</div><div class="val tnum">${fmtHrs(s.avg_onsite_tat_hrs)}</div><div class="sub">median ${fmtHrs(s.median_onsite_tat_hrs)}</div></div>
+        <div class="numbox"><div class="lbl">Avg TAT (job)</div><div class="val tnum">${fmtHrs(s.avg_total_tat_hrs)}</div><div class="sub">assigned → submitted</div></div>
+        <div class="numbox"><div class="lbl">Response TAT</div><div class="val tnum">${fmtHrs(s.avg_response_tat_hrs)}</div><div class="sub">scheduled → submitted</div></div>
+        <div class="numbox"><div class="lbl">On-site TAT</div><div class="val tnum">${s.avg_onsite_tat_hrs != null ? (s.avg_onsite_tat_hrs * 60).toFixed(0) + ' min' : '—'}</div><div class="sub">start → submit</div></div>
         <div class="numbox"><div class="lbl">Client rating</div><div class="val tnum">${fmtRating(s.avg_rating)}<span style="font-size:14px; color:var(--ink-300)"> /5</span></div><div class="sub">${s.n_ratings} rating${s.n_ratings === 1 ? "" : "s"}</div></div>
-        <div class="numbox"><div class="lbl">Stuck jobs (>72h)</div><div class="val tnum">${s.stuck_job_count}</div><div class="sub">${fmtPct(s.stuck_job_rate)} of approved</div></div>
-        <div class="numbox"><div class="lbl">Approval rate</div><div class="val tnum">${fmtPct(s.approval_rate)}</div><div class="sub">${fmtInt(s.total_attempts)} attempts</div></div>
+        <div class="numbox"><div class="lbl">Stuck jobs (>72h)</div><div class="val tnum">${s.stuck_job_count}</div><div class="sub">${fmtPct(s.stuck_job_rate)} of completed</div></div>
       </div>
     </div>
 
@@ -1923,7 +2010,7 @@ async function openDrawer(s) {
       </div>
       <div class="drawer-cta">
         <button class="btn primary" onclick="downloadReport('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Download Word doc</button>
-        <button class="btn dark" id="emailSolverBtn" onclick="emailSolver('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Email coaching to solver</button>
+        <button class="btn dark" id="emailSolverBtn" onclick="emailSolver('${escapeHtml(s.name).replace(/'/g, "\\'")}')">✎ Edit &amp; send email</button>
         <button class="btn" onclick="copyIntro('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Copy intro text</button>
       </div>
     </div>
@@ -1956,10 +2043,10 @@ function renderHistoryCharts(history) {
   const recent = history.slice(-6);
   const labels = recent.map(p => p.period_label);
   const metrics = [
-    ["Response TAT (h)", recent.map(p => p.median_response_tat_hrs)],
-    ["On-site TAT (min)", recent.map(p => p.avg_onsite_tat_hrs ? p.avg_onsite_tat_hrs * 60 : null)],
+    ["Avg time per job (h)", recent.map(p => p.avg_total_tat_hrs)],
     ["Submission rate (%)", recent.map(p => p.submission_rate != null ? p.submission_rate * 100 : null)],
     ["Client rating", recent.map(p => p.avg_rating)],
+    ["Valued", recent.map(p => p.volume)],
   ];
   container.innerHTML = `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px">${
     metrics.map((_, i) => `
@@ -2044,15 +2131,16 @@ function renderCoachingBlocks(s) {
 function timeBlock(s) {
   return `
     <div class="coaching-block time">
-      <h4>Working Faster — Time</h4>
-      <p>Median response TAT <strong>${fmtHrs(s.median_response_tat_hrs)}</strong> against a 4-hour target. On-site <strong>${fmtHrs(s.avg_onsite_tat_hrs)}</strong> against 30 min.</p>
-      <p><strong>Three habits that work:</strong></p>
+      <h4>Finishing jobs faster</h4>
+      <p><strong>The simple number:</strong> From when a job was assigned to when you submitted it, on average you took <strong>${fmtHrs(s.avg_total_tat_hrs)}</strong>. The target is <strong>10 hours</strong>.</p>
+      <p><strong>Where that time goes:</strong> about <strong>${fmtHrs(s.avg_response_tat_hrs)}</strong> between scheduling and submitting, of which <strong>${s.avg_onsite_tat_hrs != null ? (s.avg_onsite_tat_hrs * 60).toFixed(0) + ' min' : '—'}</strong> was on-site.</p>
+      <p><strong>Three things that will close the gap:</strong></p>
       <ol>
-        <li>Accept or decline within <strong>5 minutes</strong> of dispatch</li>
-        <li>Same on-site flow every time: <strong>Photos → Exterior → Interior → Submit</strong></li>
-        <li>If a job hasn't moved in <strong>24 hours</strong>, close it or escalate</li>
+        <li><strong>Accept or decline within 5 minutes</strong> — don't let it sit.</li>
+        <li><strong>Don't let jobs sit overnight.</strong> If you can't get to it the same day, decline so someone else can.</li>
+        <li><strong>Same routine every visit:</strong> photos → exterior → interior → submit before leaving site.</li>
       </ol>
-      <p style="color:var(--ink-500); font-style:italic">This week: pick one stuck job from last week. What stopped it?</p>
+      <p style="color:var(--ink-500); font-style:italic">This week: look at the slowest job you had last week. What held it up?</p>
     </div>`;
 }
 
@@ -2123,13 +2211,13 @@ function copyIntro(name) {
   const focus = s.focus_areas || [];
   let intro;
   if (focus.includes("strong")) {
-    intro = `Hi ${first} — ${s.volume} valuations this month and ${fmtRating(s.avg_rating)}/5 client rating. You're on target across the board. Keep going.`;
+    intro = `Hi ${first} — you completed ${s.volume} valuations this month and your clients rated you ${fmtRating(s.avg_rating)}/5. You hit every target. Thank you.`;
   } else if (focus.length === 1 && focus[0] === "time") {
-    intro = `Hi ${first} — ${s.volume} valuations this month. Response TAT (median ${fmtHrs(s.median_response_tat_hrs)}) is the area to focus on. Concrete steps below — you've got this.`;
+    intro = `Hi ${first} — ${s.volume} valuations this month. The main thing to work on is how long jobs take you: on average ${fmtHrs(s.avg_total_tat_hrs)} from when a job was assigned to when you submitted it. The target is 10h.`;
   } else if (focus.length === 1 && focus[0] === "submission") {
-    intro = `Hi ${first} — your TAT and quality numbers are strong. Submission rate is at ${fmtPct(s.submission_rate)} (target 85%) with ${s.pending_count} pendings to work through. Three habits below to close the gap.`;
+    intro = `Hi ${first} — your TAT and quality numbers are good. The main thing to work on is finishing the jobs you accept: you're at ${fmtPct(s.submission_rate)} (target 85%) with ${s.pending_count} pending.`;
   } else {
-    intro = `Hi ${first} — ${s.volume} valuations this month. Areas to focus on: ${focus.join(", ")}. Concrete steps below.`;
+    intro = `Hi ${first} — ${s.volume} valuations this month. Things to work on: ${focus.join(", ")}. The attached doc explains what to do.`;
   }
   navigator.clipboard.writeText(intro).then(() => toast("Intro copied to clipboard", "success"));
 }
@@ -2154,112 +2242,166 @@ async function saveSolverEmail(name) {
 }
 
 async function emailSolver(name) {
+  // Open the editor so admin can review/edit before sending
+  openSingleSolverEditor(name);
+}
+
+/* ============================================================
+   EMAIL EDITOR — single solver preview/edit + bulk template edit
+   ============================================================ */
+let editorMode = null;
+let editorSolverName = null;
+let editorDefaultBodies = {};
+let editorCurrentTab = "time";
+
+async function openSingleSolverEditor(solverName) {
   if (!currentPeriod) return;
-  const btn = document.getElementById("emailSolverBtn");
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Sending...'; }
+  editorMode = "single";
+  editorSolverName = solverName;
+  document.getElementById("emailEditorTabs").style.display = "none";
+  document.getElementById("editorSubjectRow").style.display = "block";
+  document.getElementById("tokenHelp").style.display = "none";
+  document.getElementById("editorBulkNote").style.display = "none";
+  document.getElementById("emailEditorTitle").textContent = "Email to " + solverName;
+  document.getElementById("emailEditorSubtitle").textContent = "Review and edit before sending";
+  document.getElementById("editorSendBtn").textContent = "Send to this solver";
+  document.getElementById("emailBodyTextarea").value = "Loading preview...";
+  document.getElementById("emailBodyTextarea").disabled = true;
+  document.getElementById("emailEditorModal").style.display = "flex";
   try {
-    const res = await fetch(`/api/periods/${currentPeriod.id}/solvers/${encodeURIComponent(name)}/email`, {
-      method: "POST", credentials: "include",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ detail: "Send failed" }));
-      throw new Error(data.detail);
-    }
-    const result = await res.json();
-    toast(`Email sent to ${result.detail || name}`, "success");
+    const data = await apiFetch(`/api/periods/${currentPeriod.id}/solvers/${encodeURIComponent(solverName)}/email-preview`);
+    document.getElementById("editorSubjectText").textContent = data.subject;
+    document.getElementById("emailBodyTextarea").value = data.body_text;
+    editorDefaultBodies = { single: data.body_text };
+    document.getElementById("editorRecipientNote").textContent =
+      data.email_on_file ? "To: " + data.email_on_file : "⚠ No email on file — add one in Solver Emails first";
+    document.getElementById("emailBodyTextarea").disabled = false;
   } catch (err) {
-    toast("Error: " + err.message, "error");
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = "Email coaching to solver"; }
+    document.getElementById("emailBodyTextarea").value = "Error: " + err.message;
+    document.getElementById("emailBodyTextarea").disabled = false;
   }
 }
 
-async function bulkSendCoachingEmails() {
+async function openBulkEditor(type) {
   if (!currentPeriod) return;
-  if (!confirm(
-    "Send coaching emails to every solver who missed a target this period?\n\n" +
-    "Strong performers will be skipped. Solvers without an email on file will be reported."
-  )) return;
-
-  const btn = document.getElementById("bulkSendBtn");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Sending emails...';
-
-  try {
-    const res = await fetch(`/api/periods/${currentPeriod.id}/send-coaching-emails`, {
-      method: "POST", credentials: "include",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ detail: "Failed" }));
-      throw new Error(data.detail);
-    }
-    const result = await res.json();
-    const s = result.summary;
-    let msg = `Sent ${s.sent} email${s.sent === 1 ? "" : "s"}.`;
-    if (s.failed) msg += ` ${s.failed} failed.`;
-    if (s.skipped_no_email) msg += ` ${s.skipped_no_email} skipped (no email on file).`;
-    if (s.skipped_strong) msg += ` ${s.skipped_strong} strong performers skipped.`;
-    toast(msg, s.failed > 0 ? "error" : "success");
-
-    // If some had no email, drop the user into the emails modal so they can add them
-    if (s.skipped_no_email > 0) {
-      setTimeout(() => openEmailsModal(), 1000);
-    }
-  } catch (err) {
-    toast("Error: " + err.message, "error");
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = "Email coaching to solvers missing target";
-  }
+  editorMode = type === "recognition" ? "bulk_recognition" : "bulk_coaching";
+  editorDefaultBodies = {};
+  document.getElementById("emailEditorModal").style.display = "flex";
+  document.getElementById("editorSubjectRow").style.display = "none";
+  document.getElementById("editorBulkNote").style.display = "block";
+  document.getElementById("tokenHelp").style.display = "block";
+  document.getElementById("emailEditorTitle").textContent =
+    type === "recognition" ? "Edit recognition emails" : "Edit coaching emails";
+  const solvers = currentPeriod.solvers || [];
+  document.getElementById("tabCountTime").textContent = solvers.filter(s => (s.focus_areas||[]).includes("time")).length;
+  document.getElementById("tabCountSubmission").textContent = solvers.filter(s => (s.focus_areas||[]).includes("submission")).length;
+  document.getElementById("tabCountRecognition").textContent = solvers.filter(s => (s.focus_areas||[]).includes("strong")).length;
+  document.querySelectorAll(".editor-tab").forEach(t => {
+    t.style.display = type === "recognition"
+      ? (t.dataset.tab === "recognition" ? "inline-flex" : "none")
+      : (["time","submission"].includes(t.dataset.tab) ? "inline-flex" : "none");
+  });
+  document.getElementById("emailEditorTabs").style.display = "block";
+  editorCurrentTab = type === "recognition" ? "recognition" : "time";
+  document.getElementById("emailBodyTextarea").value = "Loading template...";
+  document.getElementById("emailBodyTextarea").disabled = true;
+  await loadEditorTab(editorCurrentTab);
 }
 
-async function bulkSendRecognitionEmails() {
-  if (!currentPeriod) return;
-
-  // Count strong performers so the confirmation message tells the user how many will get email
-  const strongCount = (currentPeriod.solvers || []).filter(
-    s => (s.focus_areas || []).includes("strong")
-  ).length;
-  if (strongCount === 0) {
-    toast("No strong performers in this period.", "error");
+async function loadEditorTab(tab) {
+  editorCurrentTab = tab;
+  document.querySelectorAll(".editor-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  if (editorDefaultBodies[tab]) {
+    document.getElementById("emailBodyTextarea").value = editorDefaultBodies[tab];
+    document.getElementById("emailBodyTextarea").disabled = false;
     return;
   }
-
-  if (!confirm(
-    `Send recognition emails to all ${strongCount} strong performer${strongCount === 1 ? "" : "s"} this period?\n\n` +
-    "Solvers with any needs_work classification will be skipped. " +
-    "Solvers without an email on file will be reported."
-  )) return;
-
-  const btn = document.getElementById("bulkRecognitionBtn");
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Sending emails...';
-
+  document.getElementById("emailBodyTextarea").value = "Loading...";
+  document.getElementById("emailBodyTextarea").disabled = true;
   try {
-    const res = await fetch(`/api/periods/${currentPeriod.id}/send-recognition-emails`, {
-      method: "POST", credentials: "include",
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({ detail: "Failed" }));
-      throw new Error(data.detail);
-    }
-    const result = await res.json();
-    const s = result.summary;
-    let msg = `Sent ${s.sent} recognition email${s.sent === 1 ? "" : "s"}.`;
-    if (s.failed) msg += ` ${s.failed} failed.`;
-    if (s.skipped_no_email) msg += ` ${s.skipped_no_email} skipped (no email on file).`;
-    toast(msg, s.failed > 0 ? "error" : "success");
-
-    if (s.skipped_no_email > 0) {
-      setTimeout(() => openEmailsModal(), 1000);
-    }
+    const data = await apiFetch(`/api/periods/${currentPeriod.id}/email-template/${tab}`);
+    editorDefaultBodies[tab] = data.body;
+    document.getElementById("emailBodyTextarea").value = data.body;
+    document.getElementById("emailBodyTextarea").disabled = false;
+    document.getElementById("emailEditorSubtitle").textContent =
+      data.solver_count + " solver" + (data.solver_count===1?"":"s") + " will receive this. Tokens like {{first_name}} are filled in per-solver when sent.";
+    document.getElementById("tokenHelpText").textContent = " " + (data.token_help || "");
+    const counts = { time: +document.getElementById("tabCountTime").textContent,
+                     submission: +document.getElementById("tabCountSubmission").textContent };
+    const total = editorMode === "bulk_recognition"
+      ? +document.getElementById("tabCountRecognition").textContent
+      : (counts.time + counts.submission);
+    document.getElementById("editorSendBtn").textContent = "Send to " + total + " solver" + (total===1?"":"s");
+    document.getElementById("editorRecipientNote").textContent = editorMode === "bulk_recognition"
+      ? "Sends to solvers who hit every target"
+      : "Sends to solvers who missed a target";
   } catch (err) {
-    toast("Error: " + err.message, "error");
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = "Email recognition to strong performers";
+    document.getElementById("emailBodyTextarea").value = "Error: " + err.message;
+    document.getElementById("emailBodyTextarea").disabled = false;
   }
 }
+
+function switchEditorTab(tab) {
+  editorDefaultBodies[editorCurrentTab] = document.getElementById("emailBodyTextarea").value;
+  loadEditorTab(tab);
+}
+
+function resetEmailBody() {
+  editorDefaultBodies[editorMode === "single" ? "single" : editorCurrentTab] = null;
+  if (editorMode === "single") {
+    openSingleSolverEditor(editorSolverName);
+  } else {
+    editorDefaultBodies[editorCurrentTab] = null;
+    loadEditorTab(editorCurrentTab);
+  }
+}
+
+function closeEmailEditor() {
+  document.getElementById("emailEditorModal").style.display = "none";
+  editorMode = null; editorSolverName = null; editorDefaultBodies = {};
+}
+
+async function sendFromEditor() {
+  const body = document.getElementById("emailBodyTextarea").value.trim();
+  const btn = document.getElementById("editorSendBtn");
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.innerHTML = '<span class="spinner"></span> Sending...';
+  try {
+    if (editorMode === "single") {
+      await apiFetch(`/api/periods/${currentPeriod.id}/solvers/${encodeURIComponent(editorSolverName)}/email`,
+        { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({custom_body: body}) });
+      toast("Email sent to " + editorSolverName, "success");
+      closeEmailEditor();
+    } else {
+      editorDefaultBodies[editorCurrentTab] = body;
+      const custom_templates = {};
+      for (const [tab, text] of Object.entries(editorDefaultBodies)) {
+        if (text && tab !== "single") custom_templates[tab] = text;
+      }
+      const endpoint = editorMode === "bulk_recognition"
+        ? `/api/periods/${currentPeriod.id}/send-recognition-emails`
+        : `/api/periods/${currentPeriod.id}/send-coaching-emails`;
+      const result = await apiFetch(endpoint,
+        { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({custom_templates}) });
+      const s = result.summary;
+      let msg = `Sent ${s.sent} email${s.sent===1?"":"s"}.`;
+      if (s.failed) msg += ` ${s.failed} failed.`;
+      if (s.skipped_no_email) msg += ` ${s.skipped_no_email} skipped (no email).`;
+      toast(msg, s.failed > 0 ? "error" : "success");
+      closeEmailEditor();
+      if (s.skipped_no_email > 0) setTimeout(() => openEmailsModal(), 1000);
+    }
+  } catch (err) {
+    toast("Failed: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function bulkSendCoachingEmails() { openBulkEditor("coaching"); }
+async function bulkSendRecognitionEmails() { openBulkEditor("recognition"); }
 
 /* ============================================================
    EMAILS MODAL
@@ -2398,6 +2540,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     closeDrawer();
     closeEmailsModal();
+    closeEmailEditor();
   }
 });
 
@@ -2488,7 +2631,7 @@ function renderRegionTiles(regions) {
   }
   wrap.innerHTML = regions.map(r => {
     const sub = r.submission_rate != null ? `${(r.submission_rate * 100).toFixed(0)}%` : "—";
-    const rtat = r.avg_response_tat_hrs != null ? `${r.avg_response_tat_hrs.toFixed(1)}h` : "—";
+    const totalTat = r.avg_total_tat_hrs != null ? `${r.avg_total_tat_hrs.toFixed(1)}h` : "—";
     const staffingBadge = r.staffing === "overloaded" || r.staffing === "under_utilised"
       ? `<span class="badge-staff ${r.staffing}">${r.staffing.replace('_', ' ')}</span>`
       : `<span class="badge-staff">${r.staffing}</span>`;
@@ -2502,7 +2645,7 @@ function renderRegionTiles(regions) {
         <div class="big-stat-sub">solver${r.solver_count===1?'':'s'} · ${r.jobs_per_solver != null ? r.jobs_per_solver.toFixed(0) : '—'} jobs/solver</div>
         <div class="stat-row"><span>Assigned</span><span class="v">${fmtInt(r.total_assigned)}</span></div>
         <div class="stat-row"><span>Submission</span><span class="v">${sub}</span></div>
-        <div class="stat-row"><span>Response TAT</span><span class="v">${rtat}</span></div>
+        <div class="stat-row"><span>Avg TAT</span><span class="v">${totalTat}</span></div>
       </div>`;
   }).join("");
 }
@@ -2569,6 +2712,7 @@ function openRegionDrawer(regionName) {
     : [];
 
   const sub = r.submission_rate != null ? `${(r.submission_rate * 100).toFixed(1)}%` : "—";
+  const totalTat = r.avg_total_tat_hrs != null ? `${r.avg_total_tat_hrs.toFixed(1)}h` : "—";
   const rtat = r.avg_response_tat_hrs != null ? `${r.avg_response_tat_hrs.toFixed(1)}h` : "—";
   const otat = r.avg_onsite_tat_hrs != null ? `${(r.avg_onsite_tat_hrs * 60).toFixed(0)}min` : "—";
   const rating = r.avg_rating != null ? r.avg_rating.toFixed(2) : "—";
@@ -2579,8 +2723,8 @@ function openRegionDrawer(regionName) {
     <div class="region-stat-grid">
       <div class="numbox"><div class="lbl">Total assigned</div><div class="val tnum">${fmtInt(r.total_assigned)}</div><div class="sub">${fmtInt(r.total_valued)} valued · ${fmtInt(r.total_pending)} pending</div></div>
       <div class="numbox"><div class="lbl">Submission rate</div><div class="val tnum">${sub}</div><div class="sub">target ≥ 85%</div></div>
-      <div class="numbox"><div class="lbl">Avg response TAT</div><div class="val tnum">${rtat}</div><div class="sub">target ≤ 9h 30min</div></div>
-      <div class="numbox"><div class="lbl">Avg on-site TAT</div><div class="val tnum">${otat}</div><div class="sub">target ≤ 30min</div></div>
+      <div class="numbox"><div class="lbl">Avg time per job</div><div class="val tnum">${totalTat}</div><div class="sub">target ≤ 10h</div></div>
+      <div class="numbox"><div class="lbl">Response TAT</div><div class="val tnum">${rtat}</div><div class="sub">on-site ${otat}</div></div>
       <div class="numbox"><div class="lbl">Avg client rating</div><div class="val tnum">${rating}</div><div class="sub">target ≥ 4.5</div></div>
       <div class="numbox"><div class="lbl">Coaching needed</div><div class="val tnum">${r.needs_coaching_count}</div><div class="sub">${r.strong_count} strong performer${r.strong_count===1?'':'s'}</div></div>
     </div>
@@ -2596,7 +2740,7 @@ function openRegionDrawer(regionName) {
       <div class="region-solver-list">
         ${solversInRegion.map(s => {
           const subPct = s.submission_rate != null ? `${(s.submission_rate*100).toFixed(0)}%` : '—';
-          const tatStr = s.median_response_tat_hrs != null ? `${s.median_response_tat_hrs.toFixed(1)}h` : '—';
+          const tatStr = s.avg_total_tat_hrs != null ? `${s.avg_total_tat_hrs.toFixed(1)}h` : '—';
           return `
             <div class="row" onclick="closeRegionDrawer(); setTimeout(()=>openDrawerByName('${escapeHtml(s.name).replace(/'/g, "\\'")}'), 250)">
               <div><div class="name">${escapeHtml(s.name)}</div></div>
