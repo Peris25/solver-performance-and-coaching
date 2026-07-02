@@ -96,29 +96,17 @@ def personal_scorecard_png(stats: dict, team: dict, targets: dict) -> bytes:
             if value >= target * 0.75: return HEX_AMBER
             return HEX_RED
 
-    rtat = stats.get("median_response_tat_hrs")
-    otat = stats.get("avg_onsite_tat_hrs")
+    total_tat = stats.get("avg_total_tat_hrs")
     rating = stats.get("avg_rating")
     sub_rate = stats.get("submission_rate")
 
-    # Each entry: (label, solver_value, target_value, display_string, lower_better, color, x_axis_max)
-    # x_axis_max is the upper bound of the bar's scale so the bars visually
-    # match the metric (e.g. rating goes 0-5, percentages 0-100).
     metrics = []
-    if rtat is not None:
-        target = targets["response_tat_hours_max"]
-        x_max = max(target * 2, rtat * 1.2)
+    if total_tat is not None:
+        target = targets["total_tat_hours_max"]
+        x_max = max(target * 2, total_tat * 1.2)
         metrics.append((
-            "Response TAT (hrs)", rtat, target, f"{rtat:.1f} h", True,
-            color_for(rtat, target, True), x_max,
-        ))
-    if otat is not None:
-        target_min = targets["onsite_tat_hours_max"] * 60
-        otat_min = otat * 60
-        x_max = max(target_min * 2, otat_min * 1.2)
-        metrics.append((
-            "On-site TAT (min)", otat_min, target_min, f"{otat_min:.0f} min", True,
-            color_for(otat, targets["onsite_tat_hours_max"], True), x_max,
+            "Average TAT (hrs)", total_tat, target, f"{total_tat:.1f} h", True,
+            color_for(total_tat, target, True), x_max,
         ))
     if sub_rate is not None and stats.get("assigned_count", 0) >= 5:
         sv_pct = sub_rate * 100
@@ -178,91 +166,87 @@ def personal_scorecard_png(stats: dict, team: dict, targets: dict) -> bytes:
 
 
 def time_two_clocks_png(stats: dict, targets: dict) -> bytes:
-    """Two horizontal 'clocks' showing target zones and where the solver sits.
+    """Plain-language visual of the solver's average TAT vs the 10h target.
 
-    Shown when the time coaching block fires. Makes it concrete: 'the green zone
-    ends at 4h, you're at 14.7h — that's the gap to close.'
+    Big bar: total TAT (assignment → submission), the metric they're judged on.
+    Small breakdown line below: response TAT and on-site TAT for context.
     """
-    fig, ax = plt.subplots(figsize=(7.5, 3.0))
+    fig, ax = plt.subplots(figsize=(7.5, 2.8))
 
-    rtat = stats.get("median_response_tat_hrs")
+    total_tat = stats.get("avg_total_tat_hrs")
+    rtat = stats.get("avg_response_tat_hrs")
     otat = stats.get("avg_onsite_tat_hrs")
+    total_target = targets.get("total_tat_hours_max", 10.0)
 
-    def draw_clock(y, label, sub, value, target, scale_max, units_fmt):
-        # y = vertical center; bar height 0.45
-        # Target zone (black) from 0 to target
-        target_w = (target / scale_max) * 10
-        ax.barh(y, target_w, height=0.5, left=0, color=HEX_GREEN, edgecolor="none", alpha=0.85)
-        # Stuck zone (red) from target to scale_max
-        ax.barh(y, 10 - target_w, height=0.5, left=target_w, color=HEX_RED,
-                edgecolor="none", alpha=0.30)
+    if total_tat is None:
+        ax.text(0.5, 0.5, "Not enough completed jobs to chart yet",
+                ha="center", va="center", fontsize=11, color=HEX_GREY,
+                style="italic", transform=ax.transAxes)
+        ax.axis("off")
+        return _png_bytes(fig)
 
-        # Labels inside the zones
-        ax.text(target_w / 2, y, "✓ target zone", ha="center", va="center",
-                fontsize=10, color="white", fontweight="bold")
-        ax.text(target_w + (10 - target_w) / 2, y, "outside target",
-                ha="center", va="center", fontsize=10, color=HEX_RED, fontweight="bold")
+    # ---- Big bar: average total TAT ----
+    scale_max = max(total_target * 3, total_tat * 1.2, total_target + 8)
+    target_w = (total_target / scale_max) * 10
+    y_main = 1.2
 
-        # Target line marker
-        ax.plot([target_w, target_w], [y - 0.30, y + 0.30],
-                color=HEX_NAVY, linewidth=2, linestyle="--")
-        ax.text(target_w, y + 0.40, f"{units_fmt(target)}", ha="center",
-                fontsize=9, color=HEX_NAVY, fontweight="bold")
+    # Target zone (black) and outside-target zone (faint red)
+    ax.barh(y_main, target_w, height=0.6, left=0, color=HEX_GREEN,
+            edgecolor="none", alpha=0.88)
+    ax.barh(y_main, 10 - target_w, height=0.6, left=target_w, color=HEX_RED,
+            edgecolor="none", alpha=0.28)
 
-        # Solver's position (triangle pointer + label)
-        value_x = min((value / scale_max) * 10, 10)
-        ax.scatter([value_x], [y - 0.4], marker="v", s=140,
-                   color=HEX_NAVY, zorder=4)
-        ax.text(value_x, y - 0.65, f"you: {units_fmt(value)}",
-                ha="center", fontsize=9, color=HEX_NAVY, fontweight="bold")
+    # Inside-zone labels
+    ax.text(target_w / 2, y_main, "✓ on target", ha="center", va="center",
+            fontsize=10, color="white", fontweight="bold")
+    ax.text(target_w + (10 - target_w) / 2, y_main, "over target",
+            ha="center", va="center", fontsize=10, color=HEX_RED, fontweight="bold")
 
-        # X-axis ticks underneath the bar
-        n_ticks = 5
-        for i in range(n_ticks + 1):
-            tick_x = (i / n_ticks) * 10
-            tick_val = (i / n_ticks) * scale_max
-            ax.plot([tick_x, tick_x], [y - 0.30, y - 0.36],
-                    color=HEX_GREY, linewidth=0.8)
-            ax.text(tick_x, y - 0.95, units_fmt(tick_val, with_unit=False),
-                    ha="center", fontsize=7.5, color=HEX_GREY)
+    # Target marker
+    ax.plot([target_w, target_w], [y_main - 0.34, y_main + 0.34],
+            color=HEX_NAVY, linewidth=2, linestyle="--")
+    ax.text(target_w, y_main + 0.46, f"{int(total_target)}h target",
+            ha="center", fontsize=9.5, color=HEX_NAVY, fontweight="bold")
 
-        # Left-side label
-        ax.text(-0.3, y + 0.08, label, ha="right", va="center",
-                fontsize=11, fontweight="bold", color=HEX_NAVY)
-        ax.text(-0.3, y - 0.20, sub, ha="right", va="center",
-                fontsize=8, color=HEX_GREY, style="italic")
+    # Solver position
+    value_x = min((total_tat / scale_max) * 10, 10)
+    ax.scatter([value_x], [y_main - 0.46], marker="v", s=180,
+               color=HEX_NAVY, zorder=4)
+    ax.text(value_x, y_main - 0.74, f"you: {total_tat:.1f}h",
+            ha="center", fontsize=10.5, color=HEX_NAVY, fontweight="bold")
 
-    # Top clock: Response TAT
-    if rtat is not None:
-        rtat_target = targets["response_tat_hours_max"]
-        rtat_scale = max(rtat_target * 2, rtat * 1.15, rtat_target + 4)
-        draw_clock(
-            y=1.7,
-            label="Response TAT",
-            sub="schedule → submitted",
-            value=rtat,
-            target=rtat_target,
-            scale_max=rtat_scale,
-            units_fmt=lambda v, with_unit=True: f"{v:.1f}h" if with_unit else f"{v:.0f}",
-        )
+    # Tick marks
+    n_ticks = 5
+    for i in range(n_ticks + 1):
+        tick_x = (i / n_ticks) * 10
+        tick_val = (i / n_ticks) * scale_max
+        ax.plot([tick_x, tick_x], [y_main - 0.34, y_main - 0.40],
+                color=HEX_GREY, linewidth=0.8)
+        ax.text(tick_x, y_main - 1.00, f"{tick_val:.0f}h",
+                ha="center", fontsize=8, color=HEX_GREY)
 
-    # Bottom clock: On-site TAT (in minutes)
-    if otat is not None:
+    # Left label
+    ax.text(-0.3, y_main + 0.10, "Average time per job",
+            ha="right", va="center", fontsize=11.5, fontweight="bold",
+            color=HEX_NAVY)
+    ax.text(-0.3, y_main - 0.18, "from assignment → submission",
+            ha="right", va="center", fontsize=8.5,
+            color=HEX_GREY, style="italic")
+
+    # ---- Small breakdown line: response/on-site ----
+    if rtat is not None and otat is not None:
         otat_min = otat * 60
-        target_min = targets["onsite_tat_hours_max"] * 60
-        scale_min = max(target_min * 2, otat_min * 1.15, target_min + 30)
-        draw_clock(
-            y=0.0,
-            label="On-site TAT",
-            sub="start → submit",
-            value=otat_min,
-            target=target_min,
-            scale_max=scale_min,
-            units_fmt=lambda v, with_unit=True: f"{v:.0f} min" if with_unit else f"{v:.0f}",
+        breakdown = (
+            f"Of that {total_tat:.1f}h on average, "
+            f"about {rtat:.1f}h is between scheduling and finishing, "
+            f"and {otat_min:.0f} min is on-site with the vehicle."
         )
+        ax.text(5, -0.5, breakdown, ha="center", va="center",
+                fontsize=9, color=HEX_GREY, style="italic",
+                transform=ax.transData)
 
     ax.set_xlim(-3.5, 12)
-    ax.set_ylim(-1.3, 2.5)
+    ax.set_ylim(-1.5, 2.2)
     ax.axis("off")
 
     return _png_bytes(fig)
@@ -414,25 +398,35 @@ def _short_headline(stats, team, targets):
     submission_flags = needs & {"submission_rate"}
     rating_flag = "rating" in needs
 
-    head = f"You completed **{vol}** valuations this month"
+    head = f"This month you completed **{vol}** valuations"
     if rating_str:
-        head += f", with a client rating of **{rating_str}**"
+        head += f". Your clients rated you **{rating_str} out of 5**"
     head += "."
 
     if not needs:
-        focus = " You're hitting your targets across the board — excellent consistency."
+        focus = (" You met every target this month. That's the result of steady habits, "
+                 "not luck — keep doing what you're doing.")
     elif time_flags and submission_flags:
-        focus = " The chart below shows two areas to focus on this month: **time** and **submission rate**. Concrete steps below — you've got this."
+        focus = (" Two things to work on this month: **how long jobs take you** and "
+                 "**finishing the jobs you accept**. Both are explained below in plain language.")
     elif time_flags and rating_flag:
-        focus = " The chart below shows two areas: **time** and **client rating**. Steps for time below; your team lead will follow up on the rating conversation."
+        focus = (" Two things to look at this month: **how long jobs take you** "
+                 "(explained below) and **how clients rated you**. Your team lead will "
+                 "talk to you about the rating directly.")
     elif submission_flags and rating_flag:
-        focus = " The chart shows two areas: **submission rate** and **client rating**. Steps for submission below; your team lead will follow up on the rating conversation."
+        focus = (" Two things to look at this month: **finishing the jobs you accept** "
+                 "(explained below) and **how clients rated you**. Your team lead will "
+                 "talk to you about the rating directly.")
     elif time_flags:
-        focus = " The chart below shows your numbers; **time** is the one area to focus on this month. Concrete steps below."
+        focus = (" The main thing to work on this month is **how long jobs take you** "
+                 "from the moment you accept the job to when you submit it. "
+                 "The steps below will help.")
     elif submission_flags:
-        focus = " The chart below shows your numbers; **submission rate** is the one area to focus on this month. Concrete steps below."
+        focus = (" The main thing to work on this month is **finishing the jobs you "
+                 "accept**. The steps below will help.")
     elif rating_flag:
-        focus = " The chart shows **client rating** is the area to focus on this month. Your team lead will follow up directly."
+        focus = (" The one area to look at is **how clients rated you**. Your team "
+                 "lead will talk to you directly — small changes usually move the rating up quickly.")
     else:
         focus = ""
 
@@ -440,32 +434,43 @@ def _short_headline(stats, team, targets):
 
 
 def _time_block(doc, stats, targets):
-    _heading(doc, "Working Faster — Time", size=13, space_before=10, space_after=4)
+    _heading(doc, "Finishing jobs faster", size=13, space_before=10, space_after=4)
 
-    # Format the response TAT target nicely: "10-hour", "9.5-hour", or "9h 30min"
-    rtat_target = targets.get("response_tat_hours_max", 9.5)
-    if rtat_target == int(rtat_target):
-        rtat_label = f"{int(rtat_target)}-hour"
-    elif (rtat_target * 60) % 60 == 30:
-        rtat_label = f"{int(rtat_target)}h 30min"
-    else:
-        rtat_label = f"{rtat_target:.1f}-hour"
+    total_target = targets.get("total_tat_hours_max", 10.0)
+    avg_total = stats.get("avg_total_tat_hrs")
+    avg_response = stats.get("avg_response_tat_hrs")
+    avg_onsite = stats.get("avg_onsite_tat_hrs")
 
-    tgt_min = int(targets.get("onsite_tat_hours_max", 0.5) * 60)
-    _para_with_inline(doc,
-        f"Median response TAT **{fmt_hrs(stats['median_response_tat_hrs'])}** against a {rtat_label} target. "
-        f"On-site **{fmt_hrs(stats['avg_onsite_tat_hrs'])}** against {tgt_min} minutes.")
+    if avg_total is not None:
+        total_str = f"{avg_total:.1f} hours"
+        gap_str = ""
+        if avg_total > total_target:
+            gap = avg_total - total_target
+            gap_str = f" That's about **{gap:.1f} hours longer than the target**."
+        _para_with_inline(doc,
+            f"**The simple number:** From the moment a job is assigned to you, "
+            f"to the moment you submit your valuation, you took on average "
+            f"**{total_str}**. The target is **{int(total_target)} hours**.{gap_str}")
+
+        # Breakdown of where the time went
+        if avg_response is not None and avg_onsite is not None:
+            avg_onsite_min = avg_onsite * 60
+            _para_with_inline(doc,
+                f"**Where that time goes:** about **{avg_response:.1f} hours** "
+                f"between when you scheduled the job and when you submitted it, "
+                f"of which **{avg_onsite_min:.0f} minutes** was actually on-site "
+                f"with the vehicle. The rest is travel and admin time around the visit.")
 
     # Diagram: two clocks showing target zones and where the solver sits
     png = time_two_clocks_png(stats, targets)
     if png:
         _add_image(doc, png, width_in=5.8)
 
-    _para_with_inline(doc, "**Three habits that work:**")
+    _para_with_inline(doc, "**Three things that will close the gap:**")
     for i, line in enumerate([
-        "Accept or decline within **5 minutes** of dispatch",
-        "Same on-site flow every time: **Photos → Exterior → Interior → Submit**",
-        "If a job hasn't moved in **24 hours**, close it or escalate — no silent dragging",
+        "**Accept or decline the job within 5 minutes** of getting the alert — don't let it sit.",
+        "**Don't let jobs sit overnight.** If you can't get to it the same day, decline it so someone else can.",
+        "**Same routine, every visit:** photos → exterior → interior → submit before leaving the site.",
     ], start=1):
         p = doc.add_paragraph()
         p.paragraph_format.left_indent = Cm(0.6)
@@ -486,29 +491,41 @@ def _time_block(doc, stats, targets):
             r.font.size = Pt(11)
             r.font.name = "Calibri"
     _para_with_inline(doc,
-        "*This week:* pick one stuck job from last week. What stopped it? That's the pattern to fix.",
+        "*One thing to try this week:* look at the slowest job you had last week. "
+        "What held it up? That's usually the pattern worth fixing.",
         italic=False, color=GREY, size=11)
 
 
 def _submission_block(doc, stats, targets):
-    _heading(doc, "Closing More Jobs — Submission Rate", size=13, space_before=10, space_after=4)
-    pending_reasons = (stats.get("extra") or {}).get("top_pending_reasons") or []
-    reasons_str = "; ".join(f'"{r}" ({c})' for r, c in pending_reasons[:3]) if pending_reasons else "—"
+    _heading(doc, "Finishing what you start", size=13, space_before=10, space_after=4)
+    valued = stats.get("valued_count", 0)
+    assigned = stats.get("assigned_count", 0)
+    pending = stats.get("pending_count", 0)
+    sub_pct_str = fmt_pct(stats.get("submission_rate"))
+
     _para_with_inline(doc,
-        f"Submitted **{stats['valued_count']}** of **{stats['assigned_count']}** assigned "
-        f"(**{fmt_pct(stats['submission_rate'])}**) against an 85% target.")
+        f"**The simple number:** This month you were given **{assigned} jobs**. "
+        f"You completed **{valued}** of them ({sub_pct_str}). The other "
+        f"**{pending} jobs** are still pending in your basket. The goal is to "
+        f"close **at least 85%** of what you're given.")
 
     # Diagram: assigned -> submitted funnel with the pending gap
     png = submission_funnel_png(stats, targets)
     if png:
         _add_image(doc, png, width_in=5.8)
 
-    _para_with_inline(doc, f"Top pending reasons: {reasons_str}.")
-    _para_with_inline(doc, "**Three habits that close the gap:**")
+    pending_reasons = (stats.get("extra") or {}).get("top_pending_reasons") or []
+    if pending_reasons:
+        top_reason = pending_reasons[0]
+        _para_with_inline(doc,
+            f"Most of your pending jobs are sitting because of: "
+            f"**{top_reason[0]}** ({top_reason[1]} jobs).")
+
+    _para_with_inline(doc, "**Three things that will help you close more:**")
     for i, line in enumerate([
-        "Before traveling, do a **confirmation call** — kills 'No documents' pendings",
-        "For 'Not picking' jobs, try once more at a **different hour** before giving up",
-        "Set a **specific** next-attempt time on pendings — 'tomorrow 9 AM', not 'later'",
+        "**Before driving to a client, call them first** to confirm they have the documents and the vehicle ready. This kills most 'No documents' pendings.",
+        "If the client doesn't pick up the first time, **try again at a different time of day** before giving up — many people just miss the first call.",
+        "When you mark a job as pending, **write the exact time you'll try again** (e.g. 'tomorrow 9 AM'). 'Later' or 'soon' never happens.",
     ], start=1):
         p = doc.add_paragraph()
         p.paragraph_format.left_indent = Cm(0.6)
@@ -528,30 +545,42 @@ def _submission_block(doc, stats, targets):
             r.font.size = Pt(11)
             r.font.name = "Calibri"
     _para_with_inline(doc,
-        "*This week:* for every pending, write the next-attempt time on the spot. You'll convert about half. Keep going.",
+        "*One thing to try this week:* for every job you mark pending, write down "
+        "the next time you'll try. You'll close about half of them just from doing that.",
         color=GREY, size=11)
 
 
 def _strong_block(doc):
-    _heading(doc, "Keep Going", size=13, space_before=10, space_after=4)
+    _heading(doc, "Thank you — keep going", size=13, space_before=10, space_after=4)
     _para_with_inline(doc,
-        "You're hitting your targets across the board — that's the result of consistent habits, not luck.")
-    _para_with_inline(doc, "**What stays the same**")
+        "You hit every target this month. That doesn't happen by accident — it's "
+        "the result of habits you've built up, and it makes a real difference to "
+        "the team and to our clients.")
+    _para_with_inline(doc, "**Keep doing what works:**")
     _para_with_inline(doc,
-        "The boring fundamentals that got you here. Pre-visit prep, photo discipline, "
-        "client greeting — don't change a thing.")
-    _para_with_inline(doc, "**Where to grow next**")
+        "The basics that got you here. Calling clients before traveling, taking "
+        "your photos in the same order every time, presenting yourself well on "
+        "site. Don't change a thing.")
+    _para_with_inline(doc, "**Ready for more?** Here's where you can grow:")
     for line in [
-        "Take harder jobs (fleet, heavy commercial, post-accident) — the team needs depth",
-        "Mentor newer solvers — 20 minutes on a call saves them weeks",
-        "Spot patterns — you see more vehicles than most, flag what you notice",
+        "**Take on harder jobs** — fleet vehicles, commercial trucks, post-accident assessments. The team needs people who can handle these.",
+        "**Help a newer solver.** Twenty minutes on a call with someone struggling can save them weeks of figuring it out alone.",
+        "**Tell us what you notice.** You see more cars than most people. If you spot a pattern with a channel partner, a vehicle type, or a location, flag it.",
     ]:
         p = doc.add_paragraph(style="List Bullet")
         p.paragraph_format.space_after = Pt(2)
-        r = p.add_run(line)
-        r.font.size = Pt(11)
-        r.font.name = "Calibri"
-    _para_with_inline(doc, "Strong work this month. Keep it up.", color=GREY)
+        pattern = re.compile(r"(\*\*[^*]+\*\*)")
+        for part in pattern.split(line):
+            if not part: continue
+            r = p.add_run()
+            if part.startswith("**") and part.endswith("**"):
+                r.text = part[2:-2]
+                r.font.bold = True
+            else:
+                r.text = part
+            r.font.size = Pt(11)
+            r.font.name = "Calibri"
+    _para_with_inline(doc, "Thank you for the strong month.", color=GREY)
 
 
 # --- main builder ---------------------------------------------------------
@@ -564,24 +593,27 @@ def _format_metric_delta(metric_key: str, m: dict) -> str:
     if prev is None or curr is None:
         return ""
 
-    if metric_key == "response_tat":
+    if metric_key == "total_tat":
         prev_s = f"{prev:.1f}h"; curr_s = f"{curr:.1f}h"
-        label = "Response TAT"
+        label = "Average time per job"
+    elif metric_key == "response_tat":
+        prev_s = f"{prev:.1f}h"; curr_s = f"{curr:.1f}h"
+        label = "Response time"
     elif metric_key == "onsite_tat":
         prev_s = f"{prev*60:.0f}min"; curr_s = f"{curr*60:.0f}min"
-        label = "On-site"
+        label = "Time on site"
     elif metric_key == "submission_rate":
         prev_s = f"{prev*100:.0f}%"; curr_s = f"{curr*100:.0f}%"
-        label = "Submission rate"
+        label = "Jobs finished"
     elif metric_key == "rating":
         prev_s = f"{prev:.2f}"; curr_s = f"{curr:.2f}"
         label = "Client rating"
     elif metric_key == "volume":
         prev_s = f"{int(prev)}"; curr_s = f"{int(curr)}"
-        label = "Valued"
+        label = "Valuations done"
     elif metric_key == "assigned":
         prev_s = f"{int(prev)}"; curr_s = f"{int(curr)}"
-        label = "Assigned"
+        label = "Jobs assigned"
     else:
         prev_s = str(prev); curr_s = str(curr)
         label = metric_key
@@ -606,9 +638,9 @@ def _comparison_block(doc, comparison: dict, previous_period_label: str):
         headline_display = "Broadly steady"
     _para_with_inline(doc, f"*{headline_display}.*", italic=False, color=GREY)
 
-    # Show all non-NA metric deltas
+    # Show all non-NA metric deltas. total_tat first since that's the headline metric.
     metrics = comparison.get("metrics", {})
-    interesting_keys = ["response_tat", "submission_rate", "volume", "assigned", "rating", "onsite_tat"]
+    interesting_keys = ["total_tat", "submission_rate", "volume", "assigned", "rating"]
 
     lines = []
     for key in interesting_keys:
@@ -713,13 +745,16 @@ def build_doc(stats: dict, team: dict, targets: dict,
     # If only rating is flagged (no coaching modules), explain that the team
     # lead will follow up rather than leaving the doc empty.
     if not modules and classifications.get("rating") == "needs_work":
-        _heading(doc, "Client rating conversation", size=13, space_before=10, space_after=4)
+        _heading(doc, "About your client rating", size=13, space_before=10, space_after=4)
         _para_with_inline(doc,
-            f"Rating is below target (**{fmt_rating(stats['avg_rating'])}** from {stats['n_ratings']} ratings). "
-            "This isn't a workflow issue — it's about how visits land with clients.")
+            f"Your clients rated you **{fmt_rating(stats['avg_rating'])} out of 5** this "
+            f"month, from {stats['n_ratings']} ratings. The team is aiming for **4.5 or "
+            "higher**. This isn't about your workflow — it's about how you come across to clients.")
         _para_with_inline(doc,
-            "**Team lead to follow up directly** on greeting, explanation, and closing habits. "
-            "Small changes typically move ratings up half a star within weeks.")
+            "**Your team lead will talk to you about this directly.** It's usually small "
+            "things — how you greet the client, how you explain what you're doing, "
+            "how you close the visit — and they tend to move the rating up within a "
+            "few weeks once you focus on them.")
 
     # Save to bytes
     buf = io.BytesIO()
