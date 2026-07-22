@@ -438,8 +438,9 @@ def get_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(a
 @router.delete("/api/periods/{period_id}")
 def delete_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(auth.require_admin)):
     """Delete an uploaded period entirely: its snapshots, region snapshots,
-    email send log, and the saved .xlsx file on disk. This can't be undone —
-    the admin has to re-upload the workbook to get this period back.
+    email send log, row-level job/rating records, and the saved .xlsx file
+    on disk. This can't be undone — the admin has to re-upload the workbook
+    to get this period back.
     """
     p = db.get(models.Period, period_id)
     if not p:
@@ -449,12 +450,16 @@ def delete_period(period_id: int, db: Session = Depends(get_db), _: str = Depend
     uploaded_filename = p.uploaded_filename
 
     # SolverSnapshot rows cascade automatically via the relationship, but
-    # RegionSnapshot and EmailSendLog don't have a cascading relationship
-    # defined, so clean those up explicitly first.
+    # RegionSnapshot, EmailSendLog, JobRecord, and RatingRecord don't have a
+    # cascading relationship defined, so clean those up explicitly first.
     for r in db.scalars(select(models.RegionSnapshot).where(models.RegionSnapshot.period_id == period_id)).all():
         db.delete(r)
     for log in db.scalars(select(models.EmailSendLog).where(models.EmailSendLog.period_id == period_id)).all():
         db.delete(log)
+    for jr in db.scalars(select(models.JobRecord).where(models.JobRecord.period_id == period_id)).all():
+        db.delete(jr)
+    for rr in db.scalars(select(models.RatingRecord).where(models.RatingRecord.period_id == period_id)).all():
+        db.delete(rr)
 
     db.delete(p)
     db.commit()
