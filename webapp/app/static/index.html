@@ -131,17 +131,35 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .side-footer { margin-top: auto; font-size: 11px; color: var(--ink-500); line-height: 1.5; }
-.side-footer .small-btn {
+.small-btn {
   display: block; margin-top: 8px; padding: 8px 12px;
   background: transparent; border: 1px solid var(--ink-700);
   border-radius: 6px; color: var(--ink-300);
   font-size: 12px; cursor: pointer; text-align: center;
   width: 100%; transition: all .12s; font-family: inherit;
 }
-.side-footer .small-btn:hover { color: #FFFFFF; border-color: var(--ink-500); }
+.small-btn:hover { color: #FFFFFF; border-color: var(--ink-500); }
+.small-btn.danger { border-color: rgba(217,37,42,0.5); color: #FF9A9D; }
+.small-btn.danger:hover { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
+.side-footer .small-btn { }
 
 /* Main area */
 .main { padding: 36px 48px 80px; overflow-x: hidden; }
+
+.view-tabs {
+  display: flex; gap: 4px; margin: 0 0 28px;
+  border-bottom: 1px solid var(--ink-100);
+}
+.view-tab {
+  padding: 10px 18px; background: none; border: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--ink-400); cursor: pointer; transition: all .12s;
+}
+.view-tab:hover { color: var(--ink-700); }
+.view-tab.active { color: var(--ink-900); border-bottom-color: var(--brand); }
+.view { display: none; }
+.view.active { display: block; }
 
 .page-header {
   display: flex; align-items: flex-end; justify-content: space-between;
@@ -183,7 +201,7 @@ button { font-family: inherit; cursor: pointer; }
    KPI cards — six this time, narrower
    ============================================================ */
 .kpi-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(8, 1fr);
   gap: 16px; margin-bottom: 36px;
 }
 .kpi {
@@ -215,8 +233,8 @@ button { font-family: inherit; cursor: pointer; }
 .kpi .badge.bad { background: var(--brand); color: #FFFFFF; }
 .kpi .badge.neutral { background: var(--ink-100); color: var(--ink-500); }
 
-@media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 800px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1500px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* Section */
 .section { margin-bottom: 36px; }
@@ -786,6 +804,50 @@ td.num.dim { color: var(--ink-300); }
 /* ============================================================
    TALENT GRID — 9-box performance × quality matrix
    ============================================================ */
+.tg-range-bar {
+  display: flex; align-items: center; gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.tg-range-mode {
+  display: inline-flex; background: var(--ink-50);
+  border-radius: 8px; padding: 3px; gap: 2px;
+}
+.tg-mode-btn {
+  padding: 7px 14px; border: none; background: none;
+  border-radius: 6px; font-family: inherit; font-size: 12.5px;
+  font-weight: 600; color: var(--ink-500); cursor: pointer;
+  transition: all .12s;
+}
+.tg-mode-btn:hover { color: var(--ink-700); }
+.tg-mode-btn.active { background: var(--card); color: var(--ink-900);
+  box-shadow: 0 1px 3px rgba(14,14,16,0.08); }
+.tg-range-controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.tg-range-controls label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--ink-500); font-weight: 600;
+}
+.tg-range-controls input[type="date"] {
+  font-family: inherit; font-size: 12.5px;
+  border: 1px solid var(--ink-200); border-radius: 6px;
+  padding: 6px 8px; color: var(--ink-900);
+}
+.tg-range-presets { display: inline-flex; gap: 6px; margin-left: 4px; }
+.tg-preset-btn {
+  padding: 6px 12px; border: 1px solid var(--ink-200); background: var(--card);
+  border-radius: 6px; font-family: inherit; font-size: 12px;
+  color: var(--ink-500); cursor: pointer; transition: all .12s;
+}
+.tg-preset-btn:hover { color: var(--ink-900); border-color: var(--ink-400); }
+.tg-range-status {
+  font-size: 12.5px; color: var(--ink-500); margin-bottom: 20px;
+  min-height: 18px;
+}
+.tg-range-status .hi { color: var(--ink-900); font-weight: 600; }
+.tg-range-status .warn { color: var(--brand); font-weight: 600; }
+
 .talent-grid-wrap {
   display: grid;
   grid-template-columns: 32px 1fr;
@@ -996,6 +1058,7 @@ td.num.dim { color: var(--ink-300); }
         <option value="">— no comparison —</option>
       </select>
     </div>
+    <button class="small-btn danger" id="deletePeriodBtn" style="display:none">🗑 Delete this period</button>
   </div>
 
   <div class="side-section">
@@ -1040,6 +1103,14 @@ td.num.dim { color: var(--ink-300); }
   </div>
 </div>
 
+<div class="view-tabs" id="viewTabs" style="display:none">
+  <button class="view-tab active" data-view="overview" onclick="switchView('overview')">Overview</button>
+  <button class="view-tab" data-view="regions" onclick="switchView('regions')">Regions</button>
+  <button class="view-tab" data-view="tat" onclick="switchView('tat')">TAT</button>
+  <button class="view-tab" data-view="talent" onclick="switchView('talent')">Talent grid</button>
+  <button class="view-tab" data-view="solvers" onclick="switchView('solvers')">Solvers</button>
+</div>
+
 <div class="empty-state" id="emptyState" style="display:none">
   <h2>No periods yet</h2>
   <p>Upload your first Zoho export to begin. The portal expects a workbook with sheets named <strong>TOTAL VALUED</strong>, <strong>SOLVERS BASKET</strong>, and <strong>CLIENT RATING</strong>.</p>
@@ -1047,6 +1118,8 @@ td.num.dim { color: var(--ink-300); }
 </div>
 
 <div id="dashboard" style="display:none">
+
+<div class="view active" id="view-overview">
 
   <!-- Period comparison summary (only shown when 2nd period selected) -->
   <div class="cmp-section" id="cmpSection" style="display:none">
@@ -1060,6 +1133,11 @@ td.num.dim { color: var(--ink-300); }
       <div class="label">Total solvers</div>
       <div class="value tnum" id="kpi-solvers">—</div>
       <div class="delta"><span id="kpi-solvers-sub">—</span></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Total Valued</div>
+      <div class="value tnum" id="kpi-valued">—</div>
+      <div class="delta"><span id="kpi-valued-sub">—</span></div>
     </div>
     <div class="kpi">
       <div class="label">Jobs assigned</div>
@@ -1086,8 +1164,34 @@ td.num.dim { color: var(--ink-300); }
       <div class="value tnum"><span id="kpi-rating">—</span><span class="unit">/5</span></div>
       <div class="delta"><span class="badge" id="kpi-rating-badge">—</span><span id="kpi-rating-sub">target ≥ 4.5</span></div>
     </div>
+    <div class="kpi">
+      <div class="label">Backlog cleared</div>
+      <div class="value tnum" id="kpi-backlog">—</div>
+      <div class="delta"><span id="kpi-backlog-sub">—</span></div>
+    </div>
   </div>
 
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Submission &amp; rating distribution</h2>
+      <div class="section-sub">black = inside target, red = outside — see the TAT tab for time distributions</div>
+    </div>
+    <div class="dist-grid">
+      <div class="dist-card">
+        <div class="header"><div class="title">Submission rate (%)</div><div class="target">target ≥ 85</div></div>
+        <canvas id="dist-sub"></canvas>
+      </div>
+      <div class="dist-card">
+        <div class="header"><div class="title">Client rating</div><div class="target">target ≥ 4.5</div></div>
+        <canvas id="dist-rating"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- /view-overview -->
+
+<div class="view" id="view-regions">
   <!-- ===== REGIONAL ANALYSIS SECTION ===== -->
   <div class="section" id="regions-section">
     <div class="section-header">
@@ -1170,46 +1274,77 @@ td.num.dim { color: var(--ink-300); }
       </div>
     </div>
   </div>
+</div>
+<!-- /view-regions -->
 
+<div class="view" id="view-tat">
   <div class="section">
     <div class="section-header">
-      <h2 class="section-title">Distribution across the team</h2>
+      <h2 class="section-title">Turnaround time (TAT)</h2>
       <div class="section-sub">black = inside target, red = outside</div>
     </div>
+    <p style="font-size:13px; color:var(--ink-500); max-width:760px; margin:-8px 0 24px; line-height:1.6">
+      <strong>Average time per job</strong> is the main number solvers are judged on: from
+      <em>Schedule date</em> (or <em>Request date</em>, if the job was never formally scheduled)
+      to <em>Valuation date &amp; time</em> — target ≤ 10h.
+      <strong>Response TAT</strong> and <strong>On-site TAT</strong> below break that number
+      into two parts: how long it took to get to the job (schedule/request → valuation start),
+      and how long the visit itself took once started (valuation start → valuation date &amp; time).
+    </p>
     <div class="dist-grid">
       <div class="dist-card">
         <div class="header"><div class="title">Average time per job (hrs)</div><div class="target">target ≤ 10</div></div>
         <canvas id="dist-tat"></canvas>
       </div>
       <div class="dist-card">
+        <div class="header"><div class="title">Response TAT (hrs)</div><div class="target">target ≤ 9.5</div></div>
+        <canvas id="dist-response-tat"></canvas>
+      </div>
+      <div class="dist-card">
         <div class="header"><div class="title">On-site TAT (min)</div><div class="target">target ≤ 30</div></div>
         <canvas id="dist-onsite"></canvas>
       </div>
-      <div class="dist-card">
-        <div class="header"><div class="title">Submission rate (%)</div><div class="target">target ≥ 85</div></div>
-        <canvas id="dist-sub"></canvas>
-      </div>
-      <div class="dist-card">
-        <div class="header"><div class="title">Client rating</div><div class="target">target ≥ 4.5</div></div>
-        <canvas id="dist-rating"></canvas>
-      </div>
     </div>
   </div>
+</div>
+<!-- /view-tat -->
 
+<div class="view" id="view-talent">
   <!-- ===== 9-BOX TALENT GRID ===== -->
   <div class="section" id="talent-grid-section">
     <div class="section-header">
       <h2 class="section-title">Talent grid</h2>
       <div class="section-sub">
-        Performance (TAT, submission rate<span id="tg-reject-hint"></span>) × Quality (client rating, volume).
+        Performance (TAT, submission rate<span id="tg-reject-hint"></span>) × Quality (client rating, jobs initiated).
         Click any cell to see who's in it.
       </div>
     </div>
 
+    <!-- Continuous date-range analysis: not locked to the uploaded period —
+         pick any window and the grid recomputes from job-level dates,
+         spanning across upload boundaries if the range crosses them. -->
+    <div class="tg-range-bar">
+      <div class="tg-range-mode">
+        <button class="tg-mode-btn active" id="tgModePeriodBtn" onclick="setTalentGridMode('period')">This period</button>
+        <button class="tg-mode-btn" id="tgModeRangeBtn" onclick="setTalentGridMode('range')">Custom range</button>
+      </div>
+      <div class="tg-range-controls" id="tgRangeControls" style="display:none">
+        <label>From <input type="date" id="tgRangeStart"></label>
+        <label>To <input type="date" id="tgRangeEnd"></label>
+        <button class="btn primary" style="padding:6px 14px; font-size:12px" onclick="applyTalentGridRange()">Apply</button>
+        <span class="tg-range-presets">
+          <button class="tg-preset-btn" onclick="setTalentGridPreset(7)">Last 7 days</button>
+          <button class="tg-preset-btn" onclick="setTalentGridPreset(14)">Last 14 days</button>
+          <button class="tg-preset-btn" onclick="setTalentGridPreset(30)">Last 30 days</button>
+        </span>
+      </div>
+    </div>
+    <div class="tg-range-status" id="tgRangeStatus"></div>
+
     <div class="talent-grid-wrap">
       <!-- Y-axis label (rotated) -->
       <div class="tg-y-axis">
-        <div class="tg-axis-label">Quality (rating × volume)</div>
+        <div class="tg-axis-label">Quality (rating × initiated)</div>
         <div class="tg-axis-ticks">
           <span>High</span><span>Med</span><span>Low</span>
         </div>
@@ -1235,7 +1370,10 @@ td.num.dim { color: var(--ink-300); }
       <div class="tg-solver-list" id="tgSolverList"></div>
     </div>
   </div>
+</div>
+<!-- /view-talent -->
 
+<div class="view" id="view-solvers">
   <div class="section">
     <div class="section-header">
       <h2 class="section-title">Solvers</h2>
@@ -1253,6 +1391,7 @@ td.num.dim { color: var(--ink-300); }
               <th data-sort="volume" style="text-align:right">Valued</th>
               <th data-sort="assigned_count" style="text-align:right">Assigned</th>
               <th data-sort="jobs_initiated" style="text-align:right">Initiated</th>
+              <th data-sort="backlog_count" style="text-align:right">Backlog</th>
               <th data-sort="total_tat" style="text-align:right">Avg TAT</th>
               <th data-sort="submission_rate" style="text-align:right">Submission</th>
               <th data-sort="rating" style="text-align:right">Rating</th>
@@ -1265,6 +1404,8 @@ td.num.dim { color: var(--ink-300); }
       </div>
     </div>
   </div>
+</div>
+<!-- /view-solvers -->
 
 </div>
 
@@ -1561,6 +1702,8 @@ async function loadPeriods() {
     document.getElementById("bulkSendBtn").style.display = "none";
     document.getElementById("bulkRecognitionBtn").style.display = "none";
     document.getElementById("compareRow").style.display = "none";
+    document.getElementById("deletePeriodBtn").style.display = "none";
+    document.getElementById("viewTabs").style.display = "none";
     return;
   }
   periods.forEach(p => {
@@ -1584,24 +1727,79 @@ async function loadPeriod(periodId) {
   }
 }
 
+async function deleteCurrentPeriod() {
+  if (!currentPeriod) return;
+  const label = currentPeriod.label;
+  const confirmed = confirm(
+    `Delete the uploaded workbook "${label}"?\n\n` +
+    `This removes all of its solvers, regions, and email history from the ` +
+    `portal, and deletes the saved Excel file. This can't be undone — ` +
+    `you'd need to re-upload the workbook to get it back.`
+  );
+  if (!confirmed) return;
+
+  const btn = document.getElementById("deletePeriodBtn");
+  btn.disabled = true;
+  btn.textContent = "Deleting…";
+  try {
+    await apiFetch(`/api/periods/${currentPeriod.id}`, { method: "DELETE" });
+    toast(`Deleted "${label}"`, "success");
+    currentPeriod = null;
+    await loadPeriods();
+  } catch (err) {
+    toast("Failed to delete: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🗑 Delete this period";
+  }
+}
+
+document.getElementById("deletePeriodBtn").addEventListener("click", deleteCurrentPeriod);
+
 /* ============================================================
    RENDER
    ============================================================ */
 function render() {
   document.getElementById("emptyState").style.display = "none";
   document.getElementById("dashboard").style.display = "block";
+  document.getElementById("viewTabs").style.display = "flex";
   document.getElementById("bulkSendBtn").style.display = "inline-flex";
   document.getElementById("bulkRecognitionBtn").style.display = "inline-flex";
+  document.getElementById("deletePeriodBtn").style.display = "block";
 
   const t = currentPeriod.team;
   document.getElementById("pageSubtitle").textContent =
     `${currentPeriod.label} · ${currentPeriod.solvers.length} solvers · ${fmtInt(t.total_valuations)} valuations completed`;
 
-  renderKPIs();
-  renderDistributions();
-  renderTalentGrid();
-  renderTable();
-  renderSidebarCounts();
+  // A newly (re)loaded period always starts the talent grid back in
+  // "this period" mode — a stale custom range from a previous period
+  // would be confusing to land on silently.
+  tgMode = "period";
+  currentSelectedTGCell = null;
+  const tgPeriodBtn = document.getElementById("tgModePeriodBtn");
+  const tgRangeBtn = document.getElementById("tgModeRangeBtn");
+  if (tgPeriodBtn && tgRangeBtn) {
+    tgPeriodBtn.classList.add("active");
+    tgRangeBtn.classList.remove("active");
+    document.getElementById("tgRangeControls").style.display = "none";
+    document.getElementById("tgRangeStatus").innerHTML =
+      `Showing <span class="hi">${escapeHtml(currentPeriod.label)}</span> (the period selected in the sidebar).`;
+  }
+
+  // Each step wrapped separately — a failure in one (e.g. the Chart.js CDN
+  // having a bad day) must not silently prevent the others from running.
+  // Without this isolation, a single thrown error anywhere in this list
+  // would abort every step after it with no visible sign to the admin.
+  const steps = [
+    ["KPIs", renderKPIs],
+    ["distributions", renderDistributions],
+    ["talent grid", renderTalentGrid],
+    ["solver table", renderTable],
+    ["sidebar counts", renderSidebarCounts],
+  ];
+  for (const [label, fn] of steps) {
+    try { fn(); } catch (err) { console.error(`render(): ${label} failed:`, err); }
+  }
 
   // Regions (loads asynchronously)
   loadAndRenderRegions(currentPeriod.id);
@@ -1615,11 +1813,36 @@ function render() {
   }
 }
 
+/* ============================================================
+   VIEW TABS — Overview / Regions / TAT / Talent grid / Solvers
+   Sections live in the DOM together but only one is visible at a
+   time. Chart.js canvases size themselves off the container's
+   rendered box, so a canvas drawn while its view is display:none
+   comes out 0×0 — switchView() redraws the charts that belong to
+   whichever view just became visible.
+   ============================================================ */
+let currentView = "overview";
+
+function switchView(name) {
+  currentView = name;
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  document.querySelectorAll(".view-tab").forEach(t => t.classList.toggle("active", t.dataset.view === name));
+  if (!currentPeriod) return;
+  requestAnimationFrame(() => {
+    if (name === "overview") renderOverviewDistributions();
+    if (name === "tat") renderTatDistributions();
+  });
+}
+
+
 function renderKPIs() {
   const t = currentPeriod.team;
 
   document.getElementById("kpi-solvers").textContent = t.total_solvers;
-  document.getElementById("kpi-solvers-sub").textContent = `${fmtInt(t.total_valuations)} valuations`;
+  document.getElementById("kpi-solvers-sub").textContent = "active this period";
+
+  document.getElementById("kpi-valued").textContent = fmtInt(t.total_valuations);
+  document.getElementById("kpi-valued-sub").textContent = "from TOTAL VALUED sheet";
 
   document.getElementById("kpi-assigned").textContent = fmtInt(t.total_jobs_assigned);
   document.getElementById("kpi-assigned-sub").textContent =
@@ -1641,6 +1864,23 @@ function renderKPIs() {
   setKPI("kpi-rating", t.avg_rating, 4.5, false,
     "team mean rating",
     (v) => v.toFixed(2), [4.5, 4.0]);
+
+  // Backlog: jobs initiated before this period, only cleared during it.
+  // Not every export has enough date coverage to compute this — show a
+  // plain dash rather than a misleading zero when it's not available.
+  const backlogEl = document.getElementById("kpi-backlog");
+  const backlogSubEl = document.getElementById("kpi-backlog-sub");
+  if (t.total_backlog == null || t.backlog_period_start == null) {
+    backlogEl.textContent = "—";
+    backlogSubEl.textContent = "not available for this period";
+  } else {
+    backlogEl.textContent = fmtInt(t.total_backlog);
+    const pct = t.pct_backlog != null ? `${(t.pct_backlog * 100).toFixed(0)}% of this week` : "";
+    const startLabel = new Date(t.backlog_period_start).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    const endLabel = new Date(t.backlog_period_end).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    backlogSubEl.textContent = `${pct} · initiated before ${startLabel}, cleared ${startLabel}–${endLabel}`;
+    backlogEl.title = `Oldest cleared this period: ${t.oldest_backlog_days != null ? t.oldest_backlog_days.toFixed(0) + ' days' : '—'}`;
+  }
 }
 
 function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
@@ -1664,13 +1904,16 @@ function setKPI(id, value, target, lowerBetter, subtitle, fmt, thresholds) {
 }
 
 function renderDistributions() {
+  // Only draw canvases belonging to the currently-visible view — Chart.js
+  // sizes off the container's rendered box, and a hidden (display:none)
+  // container reads as 0×0. switchView() draws the other view's charts
+  // the moment the user actually opens that tab.
+  if (currentView === "overview") renderOverviewDistributions();
+  if (currentView === "tat") renderTatDistributions();
+}
+
+function renderOverviewDistributions() {
   const solvers = currentPeriod.solvers;
-  drawDistribution("dist-tat", ["0-5h", "5-10h", "10-24h", "24-72h", "72h+"],
-    solvers.map(s => s.avg_total_tat_hrs),
-    [0, 5, 10, 24, 72, Infinity], [0, 10]);
-  drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
-    solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
-    [0, 15, 30, 45, 60, Infinity], [0, 30]);
   drawDistribution("dist-sub", ["<70%", "70-80%", "80-85%", "85-95%", "95%+"],
     solvers.map(s => s.submission_rate != null ? s.submission_rate * 100 : null),
     [-Infinity, 70, 80, 85, 95, Infinity], [85, Infinity]);
@@ -1679,7 +1922,31 @@ function renderDistributions() {
     [-Infinity, 3.5, 4, 4.5, 4.8, Infinity], [4.5, Infinity]);
 }
 
+function renderTatDistributions() {
+  const solvers = currentPeriod.solvers;
+  drawDistribution("dist-tat", ["0-5h", "5-10h", "10-24h", "24-72h", "72h+"],
+    solvers.map(s => s.avg_total_tat_hrs),
+    [0, 5, 10, 24, 72, Infinity], [0, 10]);
+  drawDistribution("dist-response-tat", ["0-5h", "5-9.5h", "9.5-24h", "24-72h", "72h+"],
+    solvers.map(s => s.avg_response_tat_hrs),
+    [0, 5, 9.5, 24, 72, Infinity], [0, 9.5]);
+  drawDistribution("dist-onsite", ["0-15m", "15-30m", "30-45m", "45-60m", "60m+"],
+    solvers.map(s => s.avg_onsite_tat_hrs ? s.avg_onsite_tat_hrs * 60 : null),
+    [0, 15, 30, 45, 60, Infinity], [0, 30]);
+}
+
 function drawDistribution(canvasId, labels, values, edges, targetRange) {
+  if (typeof Chart === "undefined") {
+    // Chart.js didn't load (CDN unreachable, blocked, offline, etc.) — show
+    // a plain-text fallback instead of throwing, which would otherwise
+    // silently abort the rest of render()'s remaining steps.
+    const canvas = document.getElementById(canvasId);
+    if (canvas && canvas.parentElement) {
+      canvas.parentElement.innerHTML +=
+        '<div style="padding:16px; color:var(--ink-400); font-size:12px; text-align:center">Chart library unavailable</div>';
+    }
+    return;
+  }
   const counts = new Array(labels.length).fill(0);
   values.forEach(v => {
     if (v == null) return;
@@ -1745,14 +2012,26 @@ const TG_CELLS = {
 
 let currentSelectedTGCell = null;
 
+// tgSolversSource holds whichever solver list currently drives the grid —
+// currentPeriod.solvers in "period" mode, or the fetched range in "range"
+// mode. All grid rendering reads from this instead of currentPeriod
+// directly, so the same render code serves both.
+let tgSolversSource = null;
+let tgMode = "period";
+
 function renderTalentGrid() {
   const grid = document.getElementById("tgGrid");
   if (!grid || !currentPeriod) return;
 
+  if (tgMode === "period") {
+    tgSolversSource = currentPeriod.solvers;
+  }
+  const solvers = tgSolversSource || [];
+
   // Bucket solvers by their talent-grid cell
   const byCell = {};
   for (let c = 1; c <= 9; c++) byCell[c] = [];
-  for (const s of currentPeriod.solvers) {
+  for (const s of solvers) {
     const tg = s.talent_grid;
     if (!tg || !tg.cell) continue;
     byCell[tg.cell].push(s);
@@ -1762,8 +2041,8 @@ function renderTalentGrid() {
   let html = "";
   for (let cellNum = 1; cellNum <= 9; cellNum++) {
     const meta = TG_CELLS[cellNum];
-    const solvers = byCell[cellNum];
-    const count = solvers.length;
+    const cellSolvers = byCell[cellNum];
+    const count = cellSolvers.length;
     const isActive = currentSelectedTGCell === cellNum;
     const cellClass = count > 0 ? meta.cls : "empty";
     html += `
@@ -1780,7 +2059,7 @@ function renderTalentGrid() {
   grid.innerHTML = html;
 
   // Update reject-rate hint
-  const anyHasReject = currentPeriod.solvers.some(
+  const anyHasReject = solvers.some(
     s => s.talent_grid && s.talent_grid.components && s.talent_grid.components.reject_rate != null
   );
   document.getElementById("tg-reject-hint").textContent = anyHasReject ? ", reject rate" : "";
@@ -1795,8 +2074,9 @@ function renderTalentGrid() {
 
 function selectTGCell(cellNum) {
   currentSelectedTGCell = cellNum;
+  const solvers = tgSolversSource || [];
   const byCell = {};
-  for (const s of currentPeriod.solvers) {
+  for (const s of solvers) {
     const tg = s.talent_grid;
     if (!tg || !tg.cell) continue;
     if (!byCell[tg.cell]) byCell[tg.cell] = [];
@@ -1849,6 +2129,96 @@ function talentGridBadge(tg) {
   return `<span class="tg-badge ${meta.cls}" title="Performance ${Math.round(tg.performance_score)} / Quality ${Math.round(tg.quality_score)}">${escapeHtml(meta.label)}</span>`;
 }
 
+/* ============================================================
+   TALENT GRID — continuous date-range analysis
+   The grid isn't locked to whichever period is loaded in the sidebar.
+   "Custom range" mode queries /api/talent-grid/range, which pulls job
+   rows by their own dates (spanning across upload boundaries if the
+   range crosses them) and recomputes the 9-box grid from scratch.
+   ============================================================ */
+
+function fmtDateInput(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function setTalentGridMode(mode) {
+  tgMode = mode;
+  currentSelectedTGCell = null;
+  document.getElementById("tgModePeriodBtn").classList.toggle("active", mode === "period");
+  document.getElementById("tgModeRangeBtn").classList.toggle("active", mode === "range");
+  document.getElementById("tgRangeControls").style.display = mode === "range" ? "flex" : "none";
+
+  if (mode === "period") {
+    tgSolversSource = currentPeriod ? currentPeriod.solvers : [];
+    document.getElementById("tgRangeStatus").innerHTML =
+      currentPeriod ? `Showing <span class="hi">${escapeHtml(currentPeriod.label)}</span> (the period selected in the sidebar).` : "";
+    renderTalentGrid();
+  } else {
+    // Default the range inputs to the last 14 days if empty, but don't
+    // auto-fetch — wait for "Apply" so a stray click doesn't fire a request.
+    const startInput = document.getElementById("tgRangeStart");
+    const endInput = document.getElementById("tgRangeEnd");
+    if (!startInput.value || !endInput.value) {
+      const today = new Date();
+      const twoWeeksAgo = new Date();
+      twoWeeksAgo.setDate(today.getDate() - 14);
+      startInput.value = fmtDateInput(twoWeeksAgo);
+      endInput.value = fmtDateInput(today);
+    }
+    document.getElementById("tgRangeStatus").textContent =
+      "Pick a date range and click Apply — jobs are matched by when they were actually completed, not which file they were uploaded in.";
+  }
+}
+
+function setTalentGridPreset(days) {
+  const today = new Date();
+  const start = new Date();
+  start.setDate(today.getDate() - days);
+  document.getElementById("tgRangeStart").value = fmtDateInput(start);
+  document.getElementById("tgRangeEnd").value = fmtDateInput(today);
+  applyTalentGridRange();
+}
+
+async function applyTalentGridRange() {
+  const start = document.getElementById("tgRangeStart").value;
+  const end = document.getElementById("tgRangeEnd").value;
+  const statusEl = document.getElementById("tgRangeStatus");
+
+  if (!start || !end) {
+    statusEl.innerHTML = '<span class="warn">Pick both a start and end date.</span>';
+    return;
+  }
+  if (end < start) {
+    statusEl.innerHTML = '<span class="warn">End date must be on or after the start date.</span>';
+    return;
+  }
+
+  statusEl.innerHTML = '<span class="spinner"></span> Loading…';
+  currentSelectedTGCell = null;
+
+  try {
+    const data = await apiFetch(`/api/talent-grid/range?start=${start}&end=${end}`);
+    tgSolversSource = data.solvers || [];
+
+    const startLabel = new Date(start + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    const endLabel = new Date(end + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+    if (data.solver_count === 0) {
+      statusEl.innerHTML = `<span class="warn">No completed jobs between ${startLabel} and ${endLabel}.</span>` +
+        (data.note ? ` ${escapeHtml(data.note)}` : "");
+    } else {
+      const vol = data.team ? fmtInt(data.team.total_valuations) : "?";
+      statusEl.innerHTML =
+        `Showing <span class="hi">${data.solver_count} solvers</span>, ` +
+        `<span class="hi">${vol} valuations</span> completed between ` +
+        `<span class="hi">${startLabel}</span> and <span class="hi">${endLabel}</span>.`;
+    }
+    renderTalentGrid();
+  } catch (err) {
+    statusEl.innerHTML = `<span class="warn">Failed to load: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
 function renderTable() {
   let solvers = currentPeriod.solvers.slice();
   if (currentFilter !== "all") {
@@ -1865,6 +2235,7 @@ function renderTable() {
       case "volume": return s.volume;
       case "assigned_count": return s.assigned_count;
       case "jobs_initiated": return s.jobs_initiated || 0;
+      case "backlog_count": return s.backlog_count || 0;
       case "total_tat": return s.avg_total_tat_hrs ?? Infinity;
       case "submission_rate": return s.submission_rate ?? -1;
       case "rating": return s.avg_rating ?? -1;
@@ -1891,6 +2262,7 @@ function renderTable() {
       <td class="num" style="text-align:right">${fmtInt(s.volume)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.assigned_count)}</td>
       <td class="num" style="text-align:right">${fmtInt(s.jobs_initiated || 0)}</td>
+      <td class="num" style="text-align:right">${s.backlog_count ? fmtInt(s.backlog_count) : '<span class="num dim">—</span>'}</td>
       <td class="num" style="text-align:right">${metricCell(s.avg_total_tat_hrs, "h", 10, true, 24)}</td>
       <td class="num" style="text-align:right">${metricCell(s.submission_rate != null ? s.submission_rate * 100 : null, "%", 85, false, 100)}</td>
       <td class="num" style="text-align:right">${metricCell(s.avg_rating, "", 4.5, false, 5)}</td>
@@ -1901,7 +2273,7 @@ function renderTable() {
     tbody.appendChild(tr);
   }
   if (!solvers.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--ink-500)">No solvers match the current filter.</td></tr>`;
   }
 }
 
@@ -1973,6 +2345,7 @@ async function openDrawer(s) {
         <div class="numbox"><div class="lbl">Valued</div><div class="val tnum">${fmtInt(s.volume)}</div><div class="sub">team median ${fmtInt(t.median_volume)}</div></div>
         <div class="numbox"><div class="lbl">Assigned</div><div class="val tnum">${fmtInt(s.assigned_count)}</div><div class="sub">${s.pending_count} pending</div></div>
         <div class="numbox"><div class="lbl">Initiated</div><div class="val tnum">${fmtInt(s.jobs_initiated || 0)}</div><div class="sub">${s.assigned_count ? Math.round((s.jobs_initiated||0)/s.assigned_count*100) : 0}% of assigned</div></div>
+        <div class="numbox"><div class="lbl">Backlog cleared</div><div class="val tnum">${s.backlog_count ? fmtInt(s.backlog_count) : '—'}</div><div class="sub">${s.avg_backlog_age_days != null ? 'avg ' + s.avg_backlog_age_days.toFixed(0) + 'd old' : 'none this period'}</div></div>
         <div class="numbox"><div class="lbl">Submission rate</div><div class="val tnum">${fmtPct(s.submission_rate)}</div><div class="sub">${s.valued_count} of ${s.assigned_count}</div></div>
         <div class="numbox"><div class="lbl">Avg TAT (job)</div><div class="val tnum">${fmtHrs(s.avg_total_tat_hrs)}</div><div class="sub">assigned → submitted</div></div>
         <div class="numbox"><div class="lbl">Response TAT</div><div class="val tnum">${fmtHrs(s.avg_response_tat_hrs)}</div><div class="sub">scheduled → submitted</div></div>
@@ -2059,6 +2432,11 @@ function renderHistoryCharts(history) {
   }</div>`;
   metrics.forEach(([title, values], i) => {
     const ctx = document.getElementById(`trend-${i}`).getContext("2d");
+    if (typeof Chart === "undefined") {
+      document.getElementById(`trend-${i}`).parentElement.innerHTML =
+        `<div style="padding:16px; color:var(--ink-400); font-size:12px; text-align:center">Chart library unavailable</div>`;
+      return;
+    }
     new Chart(ctx, {
       type: "line",
       data: {
@@ -2717,8 +3095,15 @@ function openRegionDrawer(regionName) {
   const rtat = r.avg_response_tat_hrs != null ? `${r.avg_response_tat_hrs.toFixed(1)}h` : "—";
   const otat = r.avg_onsite_tat_hrs != null ? `${(r.avg_onsite_tat_hrs * 60).toFixed(0)}min` : "—";
   const rating = r.avg_rating != null ? r.avg_rating.toFixed(2) : "—";
+  const avgInitiated = r.avg_jobs_initiated != null ? r.avg_jobs_initiated : 0;
 
   const locs = (r.locations || []).filter(l => l).slice(0, 12);
+
+  // Jobs-initiated comparison: each solver's own count against this
+  // region's average, sorted highest-first so over/under performers on
+  // self-sourced work are easy to spot at a glance.
+  const initiatedSorted = solversInRegion.slice().sort((a, b) => (b.jobs_initiated || 0) - (a.jobs_initiated || 0));
+  const initiatedScaleMax = Math.max(avgInitiated * 2, ...initiatedSorted.map(s => s.jobs_initiated || 0), 5);
 
   document.getElementById("regionDrawerBody").innerHTML = `
     <div class="region-stat-grid">
@@ -2737,6 +3122,21 @@ function openRegionDrawer(regionName) {
     </div>` : ''}
 
     <div class="drawer-section">
+      <h3>Jobs initiated per solver</h3>
+      <div class="tg-cell-desc" style="margin-bottom:12px">
+        Self-sourced work each solver brought in themselves this period, against
+        this region's average of <strong>${avgInitiated.toFixed(1)}</strong> per solver
+        (the dashed line). This is the same benchmark the talent grid uses for
+        the quality axis in this region.
+      </div>
+      ${initiatedSorted.length ? initiatedSorted.map(s =>
+        `<div style="cursor:pointer" onclick="closeRegionDrawer(); setTimeout(()=>openDrawerByName('${escapeHtml(s.name).replace(/'/g, "\\'")}'), 250)">
+          ${scoreBar(escapeHtml(s.name), s.jobs_initiated || 0, avgInitiated, avgInitiated, false, initiatedScaleMax, "")}
+        </div>`
+      ).join("") : '<div style="padding:12px; color:var(--ink-500); font-size:13px">No solvers in this region.</div>'}
+    </div>
+
+    <div class="drawer-section">
       <h3>Solvers in this region</h3>
       <div class="region-solver-list">
         ${solversInRegion.map(s => {
@@ -2746,6 +3146,7 @@ function openRegionDrawer(regionName) {
             <div class="row" onclick="closeRegionDrawer(); setTimeout(()=>openDrawerByName('${escapeHtml(s.name).replace(/'/g, "\\'")}'), 250)">
               <div><div class="name">${escapeHtml(s.name)}</div></div>
               <div class="stat">vol ${s.volume}</div>
+              <div class="stat">init ${s.jobs_initiated || 0}</div>
               <div class="stat">sub ${subPct}</div>
               <div class="stat">TAT ${tatStr}</div>
             </div>`;
@@ -2776,8 +3177,14 @@ function closeRegionDrawer() {
 }
 
 function openDrawerByName(name) {
-  if (!currentPeriod) return;
-  const s = currentPeriod.solvers.find(x => x.name === name);
+  // Check the currently loaded period first (has full history/coaching
+  // wiring), then fall back to the talent-grid range source — a solver
+  // shown in a custom date range might belong to a period the sidebar
+  // isn't currently pointed at (e.g. a range spanning two uploads).
+  let s = currentPeriod && currentPeriod.solvers.find(x => x.name === name);
+  if (!s && tgSolversSource) {
+    s = tgSolversSource.find(x => x.name === name);
+  }
   if (s) openDrawer(s);
 }
 
