@@ -43,8 +43,17 @@ class Period(Base):
     median_volume = Column(Float, nullable=True)
     pct_stuck_jobs_team = Column(Float, nullable=True)
 
+    # Backlog: jobs initiated before this period, cleared during it.
+    # period_start/end are derived from the data itself (min/max
+    # Valuation_Date in TOTAL VALUED), not a separately-entered date range.
+    backlog_period_start = Column(DateTime, nullable=True)
+    backlog_period_end = Column(DateTime, nullable=True)
+    total_backlog = Column(Integer, default=0)
+    total_valued_this_period = Column(Integer, default=0)
+    pct_backlog = Column(Float, nullable=True)
+    oldest_backlog_days = Column(Float, nullable=True)
+
     snapshots = relationship("SolverSnapshot", back_populates="period",
-                             cascade="all, delete-orphan")
 
 
 class SolverSnapshot(Base):
@@ -63,6 +72,7 @@ class SolverSnapshot(Base):
     jobs_initiated = Column(Integer, default=0)
     stuck_job_count = Column(Integer, default=0)
     n_ratings = Column(Integer, default=0)
+    backlog_count = Column(Integer, default=0)
 
     # Computed rates / averages
     submission_rate = Column(Float, nullable=True)
@@ -75,6 +85,7 @@ class SolverSnapshot(Base):
     median_onsite_tat_hrs = Column(Float, nullable=True)
     avg_rating = Column(Float, nullable=True)
     stuck_job_rate = Column(Float, nullable=True)
+    avg_backlog_age_days = Column(Float, nullable=True)
 
     # Classifications and training picks (JSON for forward-compat)
     classifications = Column(JSON, nullable=False, default=dict)
@@ -163,14 +174,88 @@ class RegionSnapshot(Base):
     total_jobs_initiated = Column(Integer, default=0)
     jobs_per_solver = Column(Float, nullable=True)
     submission_rate = Column(Float, nullable=True)
+    avg_total_tat_hrs = Column(Float, nullable=True)
     avg_response_tat_hrs = Column(Float, nullable=True)
     avg_onsite_tat_hrs = Column(Float, nullable=True)
     avg_rating = Column(Float, nullable=True)
-    staffing = Column(String(32), nullable=True)        # "overloaded" | "balanced" | "under_utilised"
-    performance = Column(String(32), nullable=True)     # "strong" | "on_track" | "needs_improvement" | "insufficient_data"
+    avg_jobs_initiated = Column(Float, nullable=True)
+    staffing = Column(String(32), nullable=True)        
+    performance = Column(String(32), nullable=True)     
     needs_coaching_count = Column(Integer, default=0)
     strong_count = Column(Integer, default=0)
     locations = Column(JSON, nullable=False, default=list)
     solver_names = Column(JSON, nullable=False, default=list)
+
+    period = relationship("Period")
+
+class JobRecord(Base):
+    """One row per job as it appears in TOTAL VALUED or SOLVERS BASKET.
+
+    This is the raw, row-level data behind the period-aggregated
+    SolverSnapshot — kept so the talent grid (and, later, any other view)
+    can be recomputed over an arbitrary date range instead of being locked
+    to whichever monthly/weekly file it happened to arrive in. A job
+    completed July 3rd counts toward a "July 1–15" query regardless of
+    which upload it came from.
+
+    `sheet_source` distinguishes which sheet a row came from, since TOTAL
+    VALUED and SOLVERS BASKET share an identical column layout in the Zoho
+    export but represent different things: TOTAL VALUED is "valuations
+    actually completed", SOLVERS BASKET is "jobs handed to a solver this
+    period, whatever the outcome" (used for submission rate / pending).
+
+    `period_id` records which upload the row arrived with, for traceability
+    only — it is NOT used to scope date-range queries (those filter on the
+    row's own dates). A (sheet_source, vehicle_reg, requested_date, solver)
+    row is only inserted once even if the same job appears in an overlapping
+    later upload, so re-uploading an overlapping period doesn't double-count.
+    """
+    __tablename__ = "job_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period_id = Column(Integer, ForeignKey("periods.id"), nullable=True, index=True)
+    sheet_source = Column(String(16), nullable=False, index=True)  # "total_valued" | "solvers_basket"
+
+    solver = Column(String(128), nullable=False, index=True)
+    vehicle_reg = Column(String(64), nullable=True, index=True)
+
+    requested_date = Column(DateTime, nullable=True, index=True)
+    schedule_date = Column(DateTime, nullable=True)
+    valuation_start = Column(DateTime, nullable=True)
+    valuation_date = Column(DateTime, nullable=True, index=True)
+
+    request_status = Column(String(64), nullable=True)     # basket: "Completed" | "Solver accept" | ...
+    approval_status = Column(String(64), nullable=True)     # "Approved" | ...
+    initiator_source = Column(String(32), nullable=True)    # "Solver" | ...
+    initiated_by = Column(String(128), nullable=True)
+
+    dedup_key = Column(String(255), nullable=False, unique=True, index=True)
+
+    period = relationship("Period")
+
+
+class RatingRecord(Base):
+    """One row per client rating, from the CLIENT RATING sheet.
+
+    `initiated_date` is the best available date anchor for range queries —
+    the sheet doesn't carry a separate "date rated" column, so filtering
+    ratings by the underlying job's initiated date is the closest available
+    proxy for "ratings from jobs that happened in this window."
+    """
+    __tablename__ = "rating_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period_id = Column(Integer, ForeignKey("periods.id"), nullable=True, index=True)
+
+    solver = Column(String(128), nullable=False, index=True)
+    vehicle_reg = Column(String(64), nullable=True)
+    initiated_date = Column(DateTime, nullable=True, index=True)
+
+    rating = Column(Float, nullable=True)
+    presentation_rating = Column(Float, nullable=True)
+    professionalism_rating = Column(Float, nullable=True)
+    punctuality_rating = Column(Float, nullable=True)
+
+    dedup_key = Column(String(255), nullable=False, unique=True, index=True)
 
     period = relationship("Period")
