@@ -218,7 +218,7 @@ def _score_to_band(score: float | None) -> int | None:
     return 0
 
 
-def compute_talent_grid(stats: dict) -> dict | None:
+def compute_talent_grid(stats: dict, initiated_target: float | None = None) -> dict | None:
     """Compute the 9-box talent-grid placement for a solver.
 
     Returns a dict with:
@@ -228,6 +228,11 @@ def compute_talent_grid(stats: dict) -> dict | None:
       - label:   human-readable cell label
       - components: per-metric scores (for tooltips / debugging)
       - confidence: 'high' | 'medium' | 'low' based on how many metrics were available
+
+    `initiated_target` is the benchmark for the "jobs initiated by solver"
+    component of the quality axis — normally the average jobs-initiated
+    count across solvers in the same operating region (falls back to the
+    team-wide average when the solver's region can't be determined).
 
     Returns None only if the solver has NO data at all (insufficient signal).
     """
@@ -253,7 +258,12 @@ def compute_talent_grid(stats: dict) -> dict | None:
         return None
     performance_score = sum(perf_available) / len(perf_available)
 
-    # --- Quality axis: client rating + volume ---
+    # --- Quality axis: client rating + jobs initiated by the solver ---
+    # Jobs initiated (self-sourced work, from TOTAL VALUED "Initiated_by")
+    # signals a solver who brings in business rather than only completing
+    # what's assigned. Benchmarked against the average for solvers
+    # operating in the same region, since regions differ hugely in how
+    # much self-initiated work is realistic (dense urban area vs rural).
     rating_score = None
     n_ratings = stats.get("n_ratings", 0)
     rating = stats.get("avg_rating")
@@ -261,13 +271,18 @@ def compute_talent_grid(stats: dict) -> dict | None:
         # Rating: 4.5 target -> 67, 5.0 -> 100
         rating_score = _score_higher_better(rating, TARGETS["rating_min"], cap_multiplier=5.0 / TARGETS["rating_min"])
 
-    volume_score = _score_higher_better(
-        stats.get("volume", 0),
-        TARGETS["volume_min_monthly"],
-        cap_multiplier=2.5,   # 2.5x target = full quality score (someone trusted with a lot of work)
+    initiated_value = stats.get("jobs_initiated", 0)
+    # Guard against a zero/missing regional benchmark (e.g. solo solver in
+    # a region, or no region matched) — fall back to a minimal floor of 1
+    # so the score function doesn't divide by zero or reward zero-target areas.
+    effective_target = initiated_target if initiated_target and initiated_target > 0 else 1.0
+    initiated_score = _score_higher_better(
+        initiated_value,
+        effective_target,
+        cap_multiplier=2.0,   # 2x the regional average = full quality score
     )
 
-    quality_components = {"rating": rating_score, "volume": volume_score}
+    quality_components = {"rating": rating_score, "jobs_initiated": initiated_score}
     quality_available = [s for s in quality_components.values() if s is not None]
     if not quality_available:
         # If we have no quality signal at all, fall back to using performance for both
@@ -298,6 +313,7 @@ def compute_talent_grid(stats: dict) -> dict | None:
         "label": label,
         "confidence": confidence,
         "components": {**perf_components, **quality_components},
+        "initiated_target_used": round(effective_target, 1),
     }
 
 
@@ -381,8 +397,14 @@ def _resolve_sheet_name(required: str, available: list[str]) -> Optional[str]:
     return None
 
 
-def analyse_workbook(input_path: Path) -> dict[str, Any]:
-    """Read the workbook and return {team, solvers, targets} for DB insertion."""
+def read_workbook_sheets(input_path: Path) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
+    """Read and return (tv, sb, cr) DataFrames from the three required sheets.
+
+    Exposed separately from `analyse_workbook` so callers that also need
+    row-level access (e.g. the upload route, to persist JobRecord /
+    RatingRecord rows for date-range queries) don't have to read the
+    Excel file twice.
+    """
     wb = pd.ExcelFile(input_path)
 
     sheet_map = {}
@@ -398,9 +420,136 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
     tv = pd.read_excel(input_path, sheet_name=sheet_map["TOTAL VALUED"])
     sb = pd.read_excel(input_path, sheet_name=sheet_map["SOLVERS BASKET"])
     cr = pd.read_excel(input_path, sheet_name=sheet_map["CLIENT RATING"])
+    tv = normalize_total_valued_columns(tv)
+    return tv, sb, cr
 
+
+# TOTAL VALUED export changed its column names at some point (seen first in
+# the "13th July - 19th July 2026" export). SOLVERS BASKET and CLIENT RATING
+# still use the original names. Rather than thread two column-name schemes
+# through every downstream computation, we rename the new layout onto the
+# original canonical names right after reading the sheet — everything past
+# this point only ever sees the names on the right.
+#
+# Two columns from the old layout have no equivalent in the new one and are
+# deliberately NOT synthesized:
+#   - Approval_Status: the new export only has a bare 0/1 "Status" flag with
+#     no documented meaning yet, so it's ignored rather than guessed at.
+#     approval_rate comes back as None for workbooks in the new layout.
+#   - Initiator_Source: replaced by a numeric "Initiated_by_type" code with
+#     no documented mapping. Jobs-initiated-by-solver is computed a
+#     different way instead — see the jobs_initiated block below — by
+#     matching Initiated_by against the solver's own name directly, which
+#     doesn't need Initiator_Source at all.
+_TOTAL_VALUED_COLUMN_RENAME = {
+    "Solver_name": "Solver",
+    "Requested_at": "Requested_Date",
+    "Scheduled_at": "Schedule_date",
+    "Valuation_start": "Valuation_Start",
+    "Valuation_date": "Valuation_Date",
+    "Initiated_at": "Initiated_Date",
+}
+
+
+def normalize_total_valued_columns(tv: "pd.DataFrame") -> "pd.DataFrame":
+    """Rename a new-layout TOTAL VALUED sheet onto the canonical column
+    names the rest of analysis.py expects. A no-op if the sheet already
+    uses the canonical names (old layout) or is missing something the
+    rename doesn't cover — the required-columns check right after this
+    call is what actually surfaces a clear error either way.
+    """
+    if "Solver_name" not in tv.columns:
+        return tv  # already canonical (or some other shape — let validation catch it)
+    rename_map = {k: v for k, v in _TOTAL_VALUED_COLUMN_RENAME.items() if k in tv.columns}
+    return tv.rename(columns=rename_map)
+
+
+def analyse_workbook(input_path: Path) -> dict[str, Any]:
+    """Read the workbook and return {team, solvers, targets} for DB insertion."""
+    tv, sb, cr = read_workbook_sheets(input_path)
+    return analyse_dataframes(tv, sb, cr)
+
+
+def compute_backlog(tv: "pd.DataFrame") -> dict:
+    """Backlog = jobs initiated before this period started, but only
+    finished (valued) during this period — work that was already sitting
+    around before the export window began, cleared out during it.
+
+    The period's own start/end aren't tracked anywhere as explicit fields
+    (a Period is just a label), so they're derived from the data itself:
+    the earliest and latest Valuation_Date in TOTAL VALUED, floored/ceiled
+    to whole days. For a normal weekly export this reproduces the export's
+    actual date range exactly (e.g. "13th July" through "19th July 23:59:59").
+
+    Returns a dict with team-level numbers plus a `per_solver` DataFrame
+    (index = Solver, columns = backlog_count, avg_backlog_age_days) for
+    the caller to join into the main per-solver summary.
+    """
+    empty = {
+        "period_start": None, "period_end": None,
+        "total_backlog": 0, "total_valued_this_period": 0,
+        "pct_backlog": None, "oldest_backlog_days": None,
+        "per_solver": pd.DataFrame(columns=["backlog_count", "avg_backlog_age_days"]),
+    }
+    if "Initiated_Date" not in tv.columns or "Valuation_Date" not in tv.columns:
+        return empty
+
+    initiated = pd.to_datetime(tv["Initiated_Date"], errors="coerce")
+    valued = pd.to_datetime(tv["Valuation_Date"], errors="coerce")
+    if valued.dropna().empty:
+        return empty
+
+    period_start = valued.min().normalize()
+    period_end = valued.max().normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
+
+    in_period = (valued >= period_start) & (valued <= period_end)
+    backlog_mask = in_period & initiated.notna() & (initiated < period_start)
+
+    backlog = tv[backlog_mask].copy()
+    backlog["_age_days"] = (valued[backlog_mask] - initiated[backlog_mask]).dt.total_seconds() / 86400
+
+    if "Solver" in backlog.columns:
+        per_solver = backlog.groupby("Solver").agg(
+            backlog_count=("_age_days", "count"),
+            avg_backlog_age_days=("_age_days", "mean"),
+        )
+    else:
+        per_solver = pd.DataFrame(columns=["backlog_count", "avg_backlog_age_days"])
+
+    total_valued_this_period = int(in_period.sum())
+    total_backlog = len(backlog)
+
+    return {
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "total_backlog": total_backlog,
+        "total_valued_this_period": total_valued_this_period,
+        "pct_backlog": (total_backlog / total_valued_this_period) if total_valued_this_period else None,
+        "oldest_backlog_days": float(backlog["_age_days"].max()) if len(backlog) else None,
+        "per_solver": per_solver,
+    }
+
+
+def analyse_dataframes(tv: "pd.DataFrame", sb: "pd.DataFrame", cr: "pd.DataFrame") -> dict[str, Any]:
+    """Core analysis, decoupled from Excel I/O.
+
+    Takes the three sheets as DataFrames (TOTAL VALUED, SOLVERS BASKET,
+    CLIENT RATING — same column layout as the Zoho export) and returns
+    {team, solvers, targets}, exactly like `analyse_workbook`.
+
+    Split out so the SAME computation serves two callers:
+      1. `analyse_workbook()` — a freshly uploaded .xlsx, full period.
+      2. `analyse_date_range()` in routes.py — solver-level rows pulled
+         from the JobRecord/RatingRecord tables for an arbitrary date
+         window, reconstructed into DataFrames with this same shape.
+
+    Callers should normalize TOTAL VALUED via `normalize_total_valued_columns()`
+    before calling this — `read_workbook_sheets()` already does, but
+    `records_to_dataframes()` (the date-range path) hands back canonical
+    names directly since JobRecord was stored using them.
+    """
     for col in ("Valuation_Start", "Valuation_Date", "Schedule_date",
-                "Requested_Date", "Approval_Status", "Solver"):
+                "Requested_Date", "Solver"):
         if col not in tv.columns:
             raise ValueError(f"TOTAL VALUED missing column: {col}")
     for col in ("Request_Status", "Status", "Solver", "Initiated_Date"):
@@ -411,37 +560,48 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
             raise ValueError(f"CLIENT RATING missing column: {col}")
 
     # ------------------------------------------------------------------
-    # TAT — computed from SOLVERS BASKET (jobs assigned to each solver
-    # this period, regardless of whether they were ultimately approved).
-    # PRIMARY metric: avg_total_tat_hrs = mean of (Valuation_Date − Requested_Date)
-    # over basket rows where Request_Status == "Completed", capped at the
-    # stuck-job threshold so multi-day outliers don't swamp the average.
+    # TAT — computed from TOTAL VALUED (every valuation actually submitted
+    # this period, regardless of approval outcome).
+    #
+    # PRIMARY metric shown on the main KPI highlights:
+    #   avg_total_tat_hrs = mean(Valuation_Date − (Schedule_date, else Requested_Date))
+    #   i.e. time from when the job was scheduled (or requested, if never
+    #   scheduled) to when the solver finished and submitted the valuation.
+    #
+    # Sub-component, shown in the TAT detail window only:
+    #   avg_response_tat_hrs = mean(Valuation_Start − (Schedule_date, else Requested_Date))
+    #   i.e. how long it took the solver to actually get on site and start.
+    #   avg_onsite_tat_hrs = mean(Valuation_Date − Valuation_Start)
+    #   i.e. time spent on site finishing the report once started.
+    #
+    # response + onsite reconstructs total (both segments share the
+    # Valuation_Start midpoint), so the two sub-metrics cleanly explain
+    # where the total time goes.
     # ------------------------------------------------------------------
-    sb = sb.copy()
-    sb["_is_pending"] = sb["Request_Status"] == "Solver accept"
-    sb["_is_completed"] = sb["Request_Status"] == "Completed"
-
-    sb["total_tat_hrs"] = (
-        sb["Valuation_Date"] - sb["Requested_Date"]
+    tv = tv.copy()
+    tv["_sched_or_req"] = tv["Schedule_date"].fillna(tv["Requested_Date"])
+    tv["total_tat_hrs"] = (
+        tv["Valuation_Date"] - tv["_sched_or_req"]
     ).dt.total_seconds() / 3600
-    sb["response_tat_hrs"] = (
-        sb["Valuation_Date"] - sb["Schedule_date"].fillna(sb["Requested_Date"])
+    tv["response_tat_hrs"] = (
+        tv["Valuation_Start"] - tv["_sched_or_req"]
     ).dt.total_seconds() / 3600
-    sb["onsite_tat_hrs"] = (
-        sb["Valuation_Date"] - sb["Valuation_Start"]
+    tv["onsite_tat_hrs"] = (
+        tv["Valuation_Date"] - tv["Valuation_Start"]
     ).dt.total_seconds() / 3600
 
-    completed_basket = sb[sb["_is_completed"]].copy()
-    completed_basket = completed_basket[
-        (completed_basket["total_tat_hrs"] >= 0)
-        & (completed_basket["onsite_tat_hrs"] >= 0)
-        & (completed_basket["onsite_tat_hrs"] < 24)
+    tv_dated = tv[tv["Solver"].notna()].copy()
+    tv_dated = tv_dated[
+        (tv_dated["total_tat_hrs"] >= 0)
+        & (tv_dated["response_tat_hrs"] >= 0)
+        & (tv_dated["onsite_tat_hrs"] >= 0)
+        & (tv_dated["onsite_tat_hrs"] < 24)
     ]
 
     stuck_threshold = TARGETS["stuck_job_hours"]
     # Average TAT excludes "stuck" outliers (>72h) so a few extreme cases
     # don't dominate. Those still feed stuck_job_count below.
-    tat_sample = completed_basket[completed_basket["total_tat_hrs"] <= stuck_threshold]
+    tat_sample = tv_dated[tv_dated["total_tat_hrs"] <= stuck_threshold]
 
     per_solver_tat = tat_sample.groupby("Solver").agg(
         avg_total_tat_hrs=("total_tat_hrs", "mean"),
@@ -453,8 +613,8 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         completed_count=("total_tat_hrs", "count"),
     )
 
-    # Stuck jobs: completed basket rows where TAT > 72h
-    stuck = completed_basket.assign(_stuck=completed_basket["total_tat_hrs"] > stuck_threshold) \
+    # Stuck jobs: TOTAL VALUED rows where total TAT > 72h
+    stuck = tv_dated.assign(_stuck=tv_dated["total_tat_hrs"] > stuck_threshold) \
         .groupby("Solver")["_stuck"].agg(["sum", "count"])
     stuck.columns = ["stuck_job_count", "_t"]
     stuck["stuck_job_rate"] = stuck["stuck_job_count"] / stuck["_t"]
@@ -463,21 +623,34 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
 
     # ------------------------------------------------------------------
     # Volume = how many valuations the solver actually completed
-    # (count of rows in TOTAL VALUED). Approval rate also from TOTAL VALUED.
+    # (count of rows in TOTAL VALUED). Approval rate also from TOTAL VALUED,
+    # when the sheet has an Approval_Status column at all — the newer export
+    # layout doesn't (see the note above _TOTAL_VALUED_COLUMN_RENAME), in
+    # which case approval_rate comes back as None for every solver rather
+    # than a guessed value.
     # ------------------------------------------------------------------
-    tv = tv.copy()
     valued_volume = tv[tv["Solver"].notna()].groupby("Solver").size().rename("tv_volume")
 
-    approval = tv[tv["Solver"].notna()].groupby("Solver").agg(
-        total_attempts=("Approval_Status", "count"),
-        approved_total=("Approval_Status", lambda s: (s == "Approved").sum()),
-    )
-    approval["approval_rate"] = approval["approved_total"] / approval["total_attempts"]
-    per_solver_tv = approval[["total_attempts", "approval_rate"]].join(valued_volume, how="outer")
+    if "Approval_Status" in tv.columns:
+        approval = tv[tv["Solver"].notna()].groupby("Solver").agg(
+            total_attempts=("Approval_Status", "count"),
+            approved_total=("Approval_Status", lambda s: (s == "Approved").sum()),
+        )
+        approval["approval_rate"] = approval["approved_total"] / approval["total_attempts"]
+        per_solver_tv = approval[["total_attempts", "approval_rate"]].join(valued_volume, how="outer")
+    else:
+        per_solver_tv = valued_volume.to_frame()
+        per_solver_tv["total_attempts"] = valued_volume
+        per_solver_tv["approval_rate"] = None
 
     # ------------------------------------------------------------------
     # SOLVERS BASKET aggregates — submission rate, assigned, pending
+    # (TAT is no longer sourced from here — see TOTAL VALUED block above)
     # ------------------------------------------------------------------
+    sb = sb.copy()
+    sb["_is_pending"] = sb["Request_Status"] == "Solver accept"
+    sb["_is_completed"] = sb["Request_Status"] == "Completed"
+
     basket = sb[sb["Solver"].notna()].groupby("Solver").agg(
         assigned_count=("Vehicle_reg", "count"),
         valued_count=("_is_completed", "sum"),
@@ -490,12 +663,30 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         axis=1,
     )
 
-    # Jobs initiated by solver (from TOTAL VALUED)
+    # Jobs initiated by solver (from TOTAL VALUED).
+    #
+    # Old export layout: Initiator_Source == "Solver" marks a self-sourced
+    # job, grouped by Initiated_by (a name that matches a solver).
+    #
+    # Newer export layout has no Initiator_Source (replaced by a numeric
+    # Initiated_by_type code with no documented mapping — deliberately not
+    # used). Instead: a job counts as self-initiated when Initiated_by
+    # names the SAME person as Solver for that row — i.e. the solver
+    # initiated their own job, matched case/whitespace-insensitively since
+    # the two columns aren't always cased identically in the export.
     if "Initiator_Source" in tv.columns and "Initiated_by" in tv.columns:
         initiated = tv[
             (tv["Initiator_Source"] == "Solver")
             & tv["Initiated_by"].notna()
         ].groupby("Initiated_by").size().rename("jobs_initiated")
+    elif "Initiated_by" in tv.columns and "Solver" in tv.columns:
+        _norm = lambda s: s.astype(str).str.strip().str.lower()
+        self_initiated_mask = (
+            tv["Initiated_by"].notna()
+            & tv["Solver"].notna()
+            & (_norm(tv["Initiated_by"]) == _norm(tv["Solver"]))
+        )
+        initiated = tv[self_initiated_mask].groupby("Solver").size().rename("jobs_initiated")
     else:
         initiated = pd.Series(dtype=int, name="jobs_initiated")
 
@@ -520,12 +711,16 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
     else:
         pending_reasons = pd.DataFrame()
 
+    # Backlog: jobs initiated before this period, cleared during it.
+    backlog_info = compute_backlog(tv)
+
     # Merge: TAT (from basket) + TV-derived (volume from TOTAL VALUED, approval rate)
-    # + basket counts + ratings + self-initiated
+    # + basket counts + ratings + self-initiated + backlog
     summary = per_solver_tat.join(per_solver_tv, how="outer")
     summary = summary.join(basket, how="outer")
     summary = summary.join(ratings_summary, how="outer")
     summary = summary.join(initiated, how="outer")
+    summary = summary.join(backlog_info["per_solver"], how="outer")
 
     # Volume = count from TOTAL VALUED (the actual valuations they completed).
     # If a solver has basket-completed but no TOTAL VALUED rows yet (e.g. timing
@@ -538,6 +733,9 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
     summary["n_ratings"] = summary["n_ratings"].fillna(0).astype(int)
     summary["stuck_job_count"] = summary["stuck_job_count"].fillna(0).astype(int)
     summary["jobs_initiated"] = summary["jobs_initiated"].fillna(0).astype(int)
+    summary["backlog_count"] = summary["backlog_count"].fillna(0).astype(int)
+    # avg_backlog_age_days stays NaN for solvers with no backlog jobs — that's
+    # "not applicable", not zero.
 
     total_valued = int(summary["valued_count"].sum())       # basket completed
     total_volume = int(summary["volume"].sum())              # TOTAL VALUED rows
@@ -566,13 +764,21 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         "total_jobs_pending": total_pending,
         "total_jobs_initiated_by_solvers": total_initiated,
         "total_ratings_received": int(len(cr_valid)),
-        "pct_stuck_jobs_team": float((completed_basket["total_tat_hrs"] > stuck_threshold).mean())
-            if len(completed_basket) else 0.0,
+        "pct_stuck_jobs_team": float((tv_dated["total_tat_hrs"] > stuck_threshold).mean())
+            if len(tv_dated) else 0.0,
+        "backlog_period_start": backlog_info["period_start"],
+        "backlog_period_end": backlog_info["period_end"],
+        "total_backlog": backlog_info["total_backlog"],
+        "total_valued_this_period": backlog_info["total_valued_this_period"],
+        "pct_backlog": backlog_info["pct_backlog"],
+        "oldest_backlog_days": backlog_info["oldest_backlog_days"],
     }
 
     def _f(v):
         if v is None or pd.isna(v): return None
         return float(v)
+
+    team_avg_initiated = float(summary["jobs_initiated"].mean()) if len(summary) else 0.0
 
     solvers = []
     for name, row in summary.iterrows():
@@ -586,6 +792,8 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
             "valued_count": int(row["valued_count"]),
             "assigned_count": int(row["assigned_count"]),
             "jobs_initiated": int(row["jobs_initiated"]),
+            "backlog_count": int(row.get("backlog_count", 0)),
+            "avg_backlog_age_days": _f(row.get("avg_backlog_age_days")),
             "submission_rate": _f(row.get("submission_rate")),
             "avg_total_tat_hrs": _f(row.get("avg_total_tat_hrs")),
             "median_total_tat_hrs": _f(row.get("median_total_tat_hrs")),
@@ -616,12 +824,122 @@ def analyse_workbook(input_path: Path) -> dict[str, Any]:
         stats["classifications"] = classify_solver(stats)
         stats["training_modules"] = pick_training_modules(stats["classifications"])
         stats["focus_areas"] = infer_focus_areas(stats["classifications"])
-        stats["talent_grid"] = compute_talent_grid(stats)
+        # Provisional talent grid using the team-wide average initiated count
+        # as the benchmark. The upload route recomputes this with each
+        # solver's REGIONAL average once solver->region matching is done
+        # (see recompute_talent_grids), which is the authoritative version
+        # that gets persisted.
+        stats["talent_grid"] = compute_talent_grid(stats, initiated_target=team_avg_initiated)
         solvers.append(stats)
 
     solvers.sort(key=lambda s: s["volume"], reverse=True)
 
     return {"team": team, "solvers": solvers, "targets": TARGETS}
+
+
+def records_to_dataframes(
+    job_records: list[dict], rating_records: list[dict]
+) -> tuple["pd.DataFrame", "pd.DataFrame", "pd.DataFrame"]:
+    """Reconstruct (tv, sb, cr) DataFrames from JobRecord/RatingRecord dicts
+    so `analyse_dataframes()` can run unmodified over data pulled from the
+    database for an arbitrary date range, rather than a fresh Excel read.
+
+    `job_records` items are plain dicts with keys matching the JobRecord
+    columns (solver, vehicle_reg, requested_date, schedule_date,
+    valuation_start, valuation_date, request_status, approval_status,
+    initiator_source, initiated_by, sheet_source). `rating_records` items
+    match RatingRecord columns (solver, vehicle_reg, initiated_date, rating,
+    presentation_rating, professionalism_rating, punctuality_rating).
+    """
+    job_cols = ["Solver", "Vehicle_reg", "Requested_Date", "Schedule_date",
+                "Valuation_Start", "Valuation_Date", "Request_Status",
+                "Status", "Approval_Status", "Initiator_Source", "Initiated_by",
+                "Initiated_Date"]
+
+    def _job_df(source: str) -> "pd.DataFrame":
+        rows = [r for r in job_records if r["sheet_source"] == source]
+        if not rows:
+            return pd.DataFrame(columns=job_cols)
+        df = pd.DataFrame(rows).rename(columns={
+            "solver": "Solver", "vehicle_reg": "Vehicle_reg",
+            "requested_date": "Requested_Date", "schedule_date": "Schedule_date",
+            "valuation_start": "Valuation_Start", "valuation_date": "Valuation_Date",
+            "request_status": "Request_Status", "approval_status": "Approval_Status",
+            "initiator_source": "Initiator_Source", "initiated_by": "Initiated_by",
+        })
+        if "Status" not in df.columns:
+            df["Status"] = None
+        # Initiated_Date isn't actually used downstream beyond a column-exists
+        # check — Requested_Date is the closest real proxy we stored.
+        df["Initiated_Date"] = df["Requested_Date"]
+        for c in ("Requested_Date", "Schedule_date", "Valuation_Start", "Valuation_Date"):
+            df[c] = pd.to_datetime(df[c])
+        return df
+
+    tv = _job_df("total_valued")
+    sb = _job_df("solvers_basket")
+
+    cr_cols = ["Solver", "Vehicle_reg", "Initiated_Date", "rating",
+               "presentation_rating", "professionalism_rating", "punctuality_rating"]
+    if rating_records:
+        cr = pd.DataFrame(rating_records).rename(columns={
+            "solver": "Solver", "vehicle_reg": "Vehicle_reg",
+            "initiated_date": "Initiated_Date",
+        })
+        for c in cr_cols:
+            if c not in cr.columns:
+                cr[c] = None
+    else:
+        cr = pd.DataFrame(columns=cr_cols)
+
+    return tv, sb, cr
+
+
+def job_record_dedup_key(sheet_source: str, vehicle_reg, requested_date, solver: str) -> str:
+    """Stable key so the same job row isn't inserted twice when overlapping
+    uploads (e.g. a weekly export whose dates fall inside a later monthly
+    export) both contain it. Missing vehicle_reg/requested_date still
+    produces a (less precise but deterministic) key rather than crashing.
+    """
+    return f"{sheet_source}|{vehicle_reg or ''}|{requested_date or ''}|{solver or ''}"
+
+
+def rating_record_dedup_key(request_id) -> str:
+    return f"rating|{request_id}"
+
+
+def recompute_talent_grids(solvers: list[dict], solver_region_map: dict[str, dict]) -> None:
+    """Recompute each solver's talent_grid using their REGIONAL average
+    jobs-initiated count as the quality-axis benchmark, instead of the
+    team-wide average used as a placeholder inside analyse_workbook.
+
+    Mutates `solvers` in place (updates the "talent_grid" key on each dict).
+    Call this after solver->region matching is available (region info isn't
+    known inside analyse_workbook itself, since matching against the
+    registered solver roster happens afterward, in the upload route).
+    """
+    from collections import defaultdict
+
+    by_bucket = defaultdict(list)
+    for s in solvers:
+        info = solver_region_map.get(s["name"])
+        region = info["region"] if info else "Unassigned"
+        by_bucket[region].append(s["jobs_initiated"])
+
+    bucket_avg = {
+        region: (sum(vals) / len(vals) if vals else 0.0)
+        for region, vals in by_bucket.items()
+    }
+    team_avg = (
+        sum(s["jobs_initiated"] for s in solvers) / len(solvers)
+        if solvers else 0.0
+    )
+
+    for s in solvers:
+        info = solver_region_map.get(s["name"])
+        region = info["region"] if info else "Unassigned"
+        target = bucket_avg.get(region) or team_avg
+        s["talent_grid"] = compute_talent_grid(s, initiated_target=target)
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +1073,7 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
 
         needs_coaching = sum(1 for s in snaps if s.get("focus_areas") and "strong" not in s.get("focus_areas", []))
         strong_count = sum(1 for s in snaps if "strong" in s.get("focus_areas", []))
+        avg_jobs_initiated = (sum(s["jobs_initiated"] for s in snaps) / total_solvers) if total_solvers else 0.0
 
         locations = sorted({
             (solver_region_map.get(s["name"]) or {}).get("location", "")
@@ -779,6 +1098,7 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
             "performance": performance,
             "needs_coaching_count": needs_coaching,
             "strong_count": strong_count,
+            "avg_jobs_initiated": round(avg_jobs_initiated, 1),
             "locations": locations,
             "solver_names": sorted(s["name"] for s in snaps),
         })
