@@ -65,7 +65,7 @@ def _build_strong_performer_lines(stats: dict, targets: dict | None) -> tuple[st
 
     highlights = []
     if vol:
-        highlights.append(f"You completed **{vol} valuations** this month")
+        highlights.append(f"Total Valued: **{vol} valuations** completed this month")
     if total_tat is not None:
         highlights.append(
             f"On average it took you **{total_tat:.1f} hours** from when a job "
