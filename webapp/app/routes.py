@@ -95,7 +95,8 @@ async def upload_workbook(
 
     # Analyse
     try:
-        result = analysis.analyse_workbook(saved_path)
+        tv, sb, cr = analysis.read_workbook_sheets(saved_path)
+        result = analysis.analyse_dataframes(tv, sb, cr)
     except ValueError as e:
         # Bad workbook shape — surface a clean message
         saved_path.unlink(missing_ok=True)
@@ -142,6 +143,34 @@ async def upload_workbook(
     period.median_volume = t["median_volume"]
     period.pct_stuck_jobs_team = t["pct_stuck_jobs_team"]
 
+    def _parse_iso(v):
+        return datetime.fromisoformat(v) if v else None
+
+    period.backlog_period_start = _parse_iso(t.get("backlog_period_start"))
+    period.backlog_period_end = _parse_iso(t.get("backlog_period_end"))
+    period.total_backlog = t.get("total_backlog") or 0
+    period.total_valued_this_period = t.get("total_valued_this_period") or 0
+    period.pct_backlog = t.get("pct_backlog")
+    period.oldest_backlog_days = t.get("oldest_backlog_days")
+
+    # --- Region matching (must happen before snapshots are saved, so the
+    # talent grid can be recomputed with each solver's REGIONAL average
+    # jobs-initiated count as the quality-axis benchmark) ---
+    registered = db.scalars(select(models.Solver).where(models.Solver.active == 1)).all()
+    registered_names = [r.name for r in registered]
+    name_to_info = {r.name: {"region": r.region, "location": r.location or ""} for r in registered}
+
+    solver_region_map = {}
+    for s in result["solvers"]:
+        matched = analysis.find_solver_match(s["name"], registered_names)
+        if matched:
+            solver_region_map[s["name"]] = name_to_info[matched]
+        # else: stays "Unassigned"
+
+    # Recompute talent grids now that regions are known — replaces the
+    # provisional team-wide-average version computed inside analyse_workbook.
+    analysis.recompute_talent_grids(result["solvers"], solver_region_map)
+
     # Solver snapshots
     for s in result["solvers"]:
         # Stash the talent-grid result inside `extra` so we don't need a schema migration
@@ -159,6 +188,7 @@ async def upload_workbook(
             jobs_initiated=s.get("jobs_initiated", 0),
             stuck_job_count=s["stuck_job_count"],
             n_ratings=s["n_ratings"],
+            backlog_count=s.get("backlog_count", 0),
             submission_rate=s["submission_rate"],
             approval_rate=s["approval_rate"],
             avg_total_tat_hrs=s.get("avg_total_tat_hrs"),
@@ -169,6 +199,7 @@ async def upload_workbook(
             median_onsite_tat_hrs=s["median_onsite_tat_hrs"],
             avg_rating=s["avg_rating"],
             stuck_job_rate=s["stuck_job_rate"],
+            avg_backlog_age_days=s.get("avg_backlog_age_days"),
             classifications=s["classifications"],
             training_modules=s["training_modules"],
             focus_areas=s["focus_areas"],
@@ -177,20 +208,6 @@ async def upload_workbook(
         db.add(snap)
 
     # --- Regional snapshots ---
-    # Match each snapshot name against the registered solvers to get a region.
-    # Solvers not in the registered list go into "Unassigned".
-    registered = db.scalars(select(models.Solver).where(models.Solver.active == 1)).all()
-    registered_names = [r.name for r in registered]
-    name_to_info = {r.name: {"region": r.region, "location": r.location or ""} for r in registered}
-
-    # Build a map from basket-name -> registered solver info using fuzzy matching
-    solver_region_map = {}
-    for s in result["solvers"]:
-        matched = analysis.find_solver_match(s["name"], registered_names)
-        if matched:
-            solver_region_map[s["name"]] = name_to_info[matched]
-        # else: stays Unassigned
-
     # Aggregate by region and persist
     # Delete any old region snapshots for this period before re-inserting
     for r in db.scalars(select(models.RegionSnapshot).where(models.RegionSnapshot.period_id == period.id)).all():
@@ -208,9 +225,11 @@ async def upload_workbook(
             total_jobs_initiated=ra["total_jobs_initiated"],
             jobs_per_solver=ra["jobs_per_solver"],
             submission_rate=ra["submission_rate"],
+            avg_total_tat_hrs=ra["avg_total_tat_hrs"],
             avg_response_tat_hrs=ra["avg_response_tat_hrs"],
             avg_onsite_tat_hrs=ra["avg_onsite_tat_hrs"],
             avg_rating=ra["avg_rating"],
+            avg_jobs_initiated=ra["avg_jobs_initiated"],
             staffing=ra["staffing"],
             performance=ra["performance"],
             needs_coaching_count=ra["needs_coaching_count"],
@@ -218,6 +237,11 @@ async def upload_workbook(
             locations=ra["locations"],
             solver_names=ra["solver_names"],
         ))
+
+    # --- Row-level persistence for continuous date-range analysis ---
+    # (talent grid "1st July to 15th July" style queries). Deduped so
+    # re-uploading an overlapping period doesn't double-count a job.
+    _persist_job_and_rating_records(db, period.id, tv, sb, cr)
 
     db.commit()
     db.refresh(period)
@@ -228,6 +252,128 @@ async def upload_workbook(
         "total_solvers": period.total_solvers,
         "total_valuations": period.total_valuations,
     }
+
+
+def _persist_job_and_rating_records(db: Session, period_id: int, tv, sb, cr) -> None:
+    """Bulk-insert raw job/rating rows for date-range queries, skipping any
+    whose dedup key already exists (so overlapping uploads — e.g. a weekly
+    export whose dates fall inside a later monthly export — don't double-
+    count the same job). Not wrapped in its own commit; the caller commits.
+    """
+    import pandas as pd
+
+    def _clean_dt(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)) or pd.isna(v):
+            return None
+        try:
+            return v.to_pydatetime() if hasattr(v, "to_pydatetime") else v
+        except (ValueError, TypeError):
+            return None
+
+    def _clean_str(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return None
+        s = str(v).strip()
+        return s or None
+
+    def _clean_float(v):
+        try:
+            if v is None or pd.isna(v):
+                return None
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    # Build candidate JobRecord rows from TOTAL VALUED + SOLVERS BASKET
+    job_candidates = []
+    for sheet_source, df in (("total_valued", tv), ("solvers_basket", sb)):
+        for _, row in df.iterrows():
+            solver = _clean_str(row.get("Solver"))
+            if not solver:
+                continue
+            requested_date = _clean_dt(row.get("Requested_Date"))
+            vehicle_reg = _clean_str(row.get("Vehicle_reg"))
+            dedup_key = analysis.job_record_dedup_key(sheet_source, vehicle_reg, requested_date, solver)
+            job_candidates.append({
+                "dedup_key": dedup_key,
+                "period_id": period_id,
+                "sheet_source": sheet_source,
+                "solver": solver,
+                "vehicle_reg": vehicle_reg,
+                "requested_date": requested_date,
+                "schedule_date": _clean_dt(row.get("Schedule_date")),
+                "valuation_start": _clean_dt(row.get("Valuation_Start")),
+                "valuation_date": _clean_dt(row.get("Valuation_Date")),
+                "request_status": _clean_str(row.get("Request_Status")),
+                "approval_status": _clean_str(row.get("Approval_Status")),
+                "initiator_source": _clean_str(row.get("Initiator_Source")),
+                "initiated_by": _clean_str(row.get("Initiated_by")),
+            })
+
+    if job_candidates:
+        keys = [c["dedup_key"] for c in job_candidates]
+        existing_keys = set()
+        # Chunk the IN clause so very large uploads don't build one giant query
+        for i in range(0, len(keys), 1000):
+            chunk = keys[i:i + 1000]
+            existing_keys.update(
+                db.scalars(
+                    select(models.JobRecord.dedup_key).where(models.JobRecord.dedup_key.in_(chunk))
+                ).all()
+            )
+        new_jobs = [c for c in job_candidates if c["dedup_key"] not in existing_keys]
+        # De-dup within this same batch too (two rows in the same sheet with
+        # an identical key would otherwise violate the unique constraint)
+        seen = set()
+        deduped_new_jobs = []
+        for c in new_jobs:
+            if c["dedup_key"] in seen:
+                continue
+            seen.add(c["dedup_key"])
+            deduped_new_jobs.append(c)
+        if deduped_new_jobs:
+            db.bulk_insert_mappings(models.JobRecord, deduped_new_jobs)
+
+    # Build candidate RatingRecord rows from CLIENT RATING
+    rating_candidates = []
+    for _, row in cr.iterrows():
+        solver = _clean_str(row.get("Solver"))
+        if not solver:
+            continue
+        request_id = row.get("Request_ID") if "Request_ID" in cr.columns else None
+        dedup_key = analysis.rating_record_dedup_key(request_id)
+        rating_candidates.append({
+            "dedup_key": dedup_key,
+            "period_id": period_id,
+            "solver": solver,
+            "vehicle_reg": _clean_str(row.get("Vehicle_reg")),
+            "initiated_date": _clean_dt(row.get("Initiated_Date")),
+            "rating": _clean_float(row.get("rating")),
+            "presentation_rating": _clean_float(row.get("presentation_rating")),
+            "professionalism_rating": _clean_float(row.get("professionalism_rating")),
+            "punctuality_rating": _clean_float(row.get("punctuality_rating")),
+        })
+
+    if rating_candidates:
+        keys = [c["dedup_key"] for c in rating_candidates]
+        existing_keys = set()
+        for i in range(0, len(keys), 1000):
+            chunk = keys[i:i + 1000]
+            existing_keys.update(
+                db.scalars(
+                    select(models.RatingRecord.dedup_key).where(models.RatingRecord.dedup_key.in_(chunk))
+                ).all()
+            )
+        new_ratings = [c for c in rating_candidates if c["dedup_key"] not in existing_keys]
+        seen = set()
+        deduped_new_ratings = []
+        for c in new_ratings:
+            if c["dedup_key"] in seen:
+                continue
+            seen.add(c["dedup_key"])
+            deduped_new_ratings.append(c)
+        if deduped_new_ratings:
+            db.bulk_insert_mappings(models.RatingRecord, deduped_new_ratings)
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +423,12 @@ def get_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(a
             "avg_volume": p.avg_volume,
             "median_volume": p.median_volume,
             "pct_stuck_jobs_team": p.pct_stuck_jobs_team,
+            "backlog_period_start": p.backlog_period_start.isoformat() if p.backlog_period_start else None,
+            "backlog_period_end": p.backlog_period_end.isoformat() if p.backlog_period_end else None,
+            "total_backlog": p.total_backlog or 0,
+            "total_valued_this_period": p.total_valued_this_period or 0,
+            "pct_backlog": p.pct_backlog,
+            "oldest_backlog_days": p.oldest_backlog_days,
         },
         "targets": analysis.TARGETS,
         "solvers": [snapshot_to_dict(s) for s in snapshots],
@@ -285,12 +437,42 @@ def get_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(a
 
 @router.delete("/api/periods/{period_id}")
 def delete_period(period_id: int, db: Session = Depends(get_db), _: str = Depends(auth.require_admin)):
+    """Delete an uploaded period entirely: its snapshots, region snapshots,
+    email send log, and the saved .xlsx file on disk. This can't be undone —
+    the admin has to re-upload the workbook to get this period back.
+    """
     p = db.get(models.Period, period_id)
     if not p:
         raise HTTPException(status_code=404, detail="Period not found")
+
+    label = p.label
+    uploaded_filename = p.uploaded_filename
+
+    # SolverSnapshot rows cascade automatically via the relationship, but
+    # RegionSnapshot and EmailSendLog don't have a cascading relationship
+    # defined, so clean those up explicitly first.
+    for r in db.scalars(select(models.RegionSnapshot).where(models.RegionSnapshot.period_id == period_id)).all():
+        db.delete(r)
+    for log in db.scalars(select(models.EmailSendLog).where(models.EmailSendLog.period_id == period_id)).all():
+        db.delete(log)
+
     db.delete(p)
     db.commit()
-    return {"ok": True}
+
+    # Best-effort removal of the underlying uploaded workbook from disk.
+    # Not fatal if this fails (e.g. already gone) — the DB rows are the
+    # source of truth for what the portal shows.
+    file_removed = False
+    if uploaded_filename:
+        file_path = Path(settings.upload_dir) / uploaded_filename
+        try:
+            if file_path.exists():
+                file_path.unlink()
+                file_removed = True
+        except OSError:
+            pass
+
+    return {"ok": True, "deleted_label": label, "file_removed": file_removed}
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +491,8 @@ def snapshot_to_dict(s: models.SolverSnapshot) -> dict:
         "jobs_initiated": s.jobs_initiated or 0,
         "stuck_job_count": s.stuck_job_count,
         "n_ratings": s.n_ratings,
+        "backlog_count": s.backlog_count or 0,
+        "avg_backlog_age_days": s.avg_backlog_age_days,
         "submission_rate": s.submission_rate,
         "approval_rate": s.approval_rate,
         "avg_total_tat_hrs": s.avg_total_tat_hrs,
@@ -1011,6 +1195,114 @@ async def seed_registered_solvers(
 
 
 # ---------------------------------------------------------------------------
+# Talent grid — continuous date-range analysis (not tied to any one upload).
+# ---------------------------------------------------------------------------
+
+@router.get("/api/talent-grid/range")
+def talent_grid_range(
+    start: str,
+    end: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(auth.require_admin),
+):
+    """9-box talent grid computed over an arbitrary date window, e.g.
+    start=2026-07-01&end=2026-07-15 — spans across whichever uploads happen
+    to contain jobs in that window, rather than being locked to one period.
+
+    Job rows are matched to the window by `valuation_date` (when the job
+    was actually completed) — a job assigned June 28th but finished July 2nd
+    counts toward a "July 1–15" query, since that's when the solver's work
+    on it actually landed. Basket rows that are still pending (no
+    valuation_date yet) are matched on `requested_date` instead, so an
+    admin looking at "jobs assigned this window" still sees them for the
+    submission-rate denominator.
+
+    Returns the same shape as a period's solver list — including
+    `talent_grid` per solver — so the frontend can reuse its existing
+    rendering code for either a period or a range.
+    """
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD")
+    if end_dt < start_dt:
+        raise HTTPException(status_code=400, detail="end must be on or after start")
+    # Make the end date inclusive of the whole day
+    end_dt = end_dt.replace(hour=23, minute=59, second=59)
+
+    from sqlalchemy import or_, and_
+
+    job_rows = db.scalars(
+        select(models.JobRecord).where(
+            or_(
+                and_(models.JobRecord.valuation_date.isnot(None),
+                     models.JobRecord.valuation_date >= start_dt,
+                     models.JobRecord.valuation_date <= end_dt),
+                and_(models.JobRecord.valuation_date.is_(None),
+                     models.JobRecord.requested_date.isnot(None),
+                     models.JobRecord.requested_date >= start_dt,
+                     models.JobRecord.requested_date <= end_dt),
+            )
+        )
+    ).all()
+
+    rating_rows = db.scalars(
+        select(models.RatingRecord).where(
+            models.RatingRecord.initiated_date.isnot(None),
+            models.RatingRecord.initiated_date >= start_dt,
+            models.RatingRecord.initiated_date <= end_dt,
+        )
+    ).all()
+
+    if not job_rows:
+        return {
+            "start": start, "end": end,
+            "solver_count": 0, "solvers": [], "team": None,
+            "targets": analysis.TARGETS,
+            "note": "No job records fall in this date range. Row-level data "
+                    "is only captured for workbooks uploaded after this "
+                    "feature was added — older periods need to be re-uploaded "
+                    "once to backfill it.",
+        }
+
+    job_dicts = [{
+        "sheet_source": j.sheet_source, "solver": j.solver, "vehicle_reg": j.vehicle_reg,
+        "requested_date": j.requested_date, "schedule_date": j.schedule_date,
+        "valuation_start": j.valuation_start, "valuation_date": j.valuation_date,
+        "request_status": j.request_status, "approval_status": j.approval_status,
+        "initiator_source": j.initiator_source, "initiated_by": j.initiated_by,
+    } for j in job_rows]
+    rating_dicts = [{
+        "solver": r.solver, "vehicle_reg": r.vehicle_reg, "initiated_date": r.initiated_date,
+        "rating": r.rating, "presentation_rating": r.presentation_rating,
+        "professionalism_rating": r.professionalism_rating, "punctuality_rating": r.punctuality_rating,
+    } for r in rating_rows]
+
+    tv, sb, cr = analysis.records_to_dataframes(job_dicts, rating_dicts)
+    result = analysis.analyse_dataframes(tv, sb, cr)
+
+    # Region-aware talent grid, same as the upload path
+    registered = db.scalars(select(models.Solver).where(models.Solver.active == 1)).all()
+    registered_names = [r.name for r in registered]
+    name_to_info = {r.name: {"region": r.region, "location": r.location or ""} for r in registered}
+    solver_region_map = {}
+    for s in result["solvers"]:
+        matched = analysis.find_solver_match(s["name"], registered_names)
+        if matched:
+            solver_region_map[s["name"]] = name_to_info[matched]
+    analysis.recompute_talent_grids(result["solvers"], solver_region_map)
+
+    return {
+        "start": start, "end": end,
+        "solver_count": len(result["solvers"]),
+        "solvers": result["solvers"],
+        "team": result["team"],
+        "targets": analysis.TARGETS,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Regions — per-period regional aggregations (for the map and tiles).
 # ---------------------------------------------------------------------------
 
@@ -1064,6 +1356,18 @@ def get_period_regions(
 
         regions = analysis.aggregate_by_region(snap_dicts, solver_region_map)
 
+        # Regions may have changed since upload (solver moved / roster edited) —
+        # recompute each solver's talent grid with the fresh regional benchmark
+        # and re-persist it into their snapshot's `extra` JSON.
+        analysis.recompute_talent_grids(snap_dicts, solver_region_map)
+        snap_by_name = {s.name: s for s in p.snapshots}
+        for sd in snap_dicts:
+            snap_row = snap_by_name.get(sd["name"])
+            if snap_row is not None:
+                extra = dict(snap_row.extra or {})
+                extra["talent_grid"] = sd.get("talent_grid")
+                snap_row.extra = extra
+
         # Persist the recomputed region snapshots (overwrite existing)
         for r in rows:
             db.delete(r)
@@ -1078,9 +1382,11 @@ def get_period_regions(
                 total_jobs_initiated=ra["total_jobs_initiated"],
                 jobs_per_solver=ra["jobs_per_solver"],
                 submission_rate=ra["submission_rate"],
+                avg_total_tat_hrs=ra["avg_total_tat_hrs"],
                 avg_response_tat_hrs=ra["avg_response_tat_hrs"],
                 avg_onsite_tat_hrs=ra["avg_onsite_tat_hrs"],
                 avg_rating=ra["avg_rating"],
+                avg_jobs_initiated=ra["avg_jobs_initiated"],
                 staffing=ra["staffing"],
                 performance=ra["performance"],
                 needs_coaching_count=ra["needs_coaching_count"],
@@ -1103,9 +1409,11 @@ def get_period_regions(
                 "total_jobs_initiated": r.total_jobs_initiated,
                 "jobs_per_solver": r.jobs_per_solver,
                 "submission_rate": r.submission_rate,
+                "avg_total_tat_hrs": r.avg_total_tat_hrs,
                 "avg_response_tat_hrs": r.avg_response_tat_hrs,
                 "avg_onsite_tat_hrs": r.avg_onsite_tat_hrs,
                 "avg_rating": r.avg_rating,
+                "avg_jobs_initiated": r.avg_jobs_initiated,
                 "staffing": r.staffing,
                 "performance": r.performance,
                 "needs_coaching_count": r.needs_coaching_count,
