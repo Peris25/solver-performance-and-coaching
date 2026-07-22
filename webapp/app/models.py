@@ -53,7 +53,7 @@ class Period(Base):
     pct_backlog = Column(Float, nullable=True)
     oldest_backlog_days = Column(Float, nullable=True)
 
-    snapshots = relationship("SolverSnapshot", back_populates="period",
+    snapshots = relationship("SolverSnapshot", back_populates="period"),
 
 
 class SolverSnapshot(Base):
