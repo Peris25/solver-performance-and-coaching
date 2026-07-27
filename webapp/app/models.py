@@ -8,7 +8,10 @@ Two main tables for now:
 History queries are just SELECTs across multiple periods for the same solver name.
 A future User table can be added without disturbing these.
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import (
+    Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text,
+    Boolean, Date, Numeric, UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -259,3 +262,76 @@ class RatingRecord(Base):
     dedup_key = Column(String(255), nullable=False, unique=True, index=True)
 
     period = relationship("Period")
+
+
+# ===========================================================================
+# Compensation module
+# ---------------------------------------------------------------------------
+# Ported from the standalone Solvit Compensation Engine v5. Kept in separate
+# tables (prefixed to avoid colliding with the performance-portal tables
+# above — notably the portal's own `solvers` roster) and linked to the rest
+# of the portal by solver *name*. See app/compensation_routes.py for the API
+# and app/compensation_engine.py for the (unchanged) calculation logic.
+# ===========================================================================
+
+class SolverCompensation(Base):
+    """Compensation roster — one row per solver, with the historical monthly
+    job averages that drive T1/T2 threshold calculation.
+
+    Distinct from the portal's `Solver` roster (which tracks region/location/
+    active status): this table only carries the numbers the pay engine needs.
+    The two are matched by ``name``.
+    """
+    __tablename__ = "solver_compensation"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(120), nullable=False, unique=True, index=True)
+    region = Column(String(60), nullable=False)
+    avg_2024 = Column(Float, default=0.0)
+    avg_2025 = Column(Float, default=0.0)
+    avg_2026 = Column(Float, default=0.0)
+    active_2026 = Column(Boolean, default=False)
+    manual_best_override = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CompPeriodEntry(Base):
+    """One row per solver per payroll period — the uploaded job counts plus the
+    pay breakdown computed at the time of entry (stored for the audit trail)."""
+    __tablename__ = "comp_period_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    solver_name = Column(String(120), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    period_label = Column(String(60))
+    std_jobs = Column(Integer, default=0)
+    assessment_earnings = Column(Numeric(12, 2), default=0)
+    # Computed at time of entry — stored for audit trail
+    t1_monthly = Column(Integer)
+    t2_monthly = Column(Integer)
+    t1_period = Column(Integer)
+    t2_period = Column(Integer)
+    gross_pay = Column(Numeric(12, 2))
+    wht = Column(Numeric(12, 2))
+    net_pay = Column(Numeric(12, 2))
+    top_rate = Column(String(20))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("solver_name", "period_start", name="uq_comp_solver_period"),
+    )
+
+
+class CompAuditLog(Base):
+    """Immutable audit trail for compensation overrides and period uploads."""
+    __tablename__ = "comp_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action = Column(String(60), nullable=False)   # e.g. "override_set", "period_uploaded"
+    solver_name = Column(String(120))
+    old_value = Column(Text)
+    new_value = Column(Text)
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
