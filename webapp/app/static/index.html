@@ -1083,6 +1083,7 @@ td.num.dim { color: var(--ink-300); }
 
   <div class="side-footer">
     Signed in as admin
+    <button class="small-btn" id="openCompBtn">💰 Compensation engine</button>
     <button class="small-btn" id="addSolverBtn">+ Add solver</button>
     <button class="small-btn" id="manageSolversBtn">Manage solvers & regions</button>
     <button class="small-btn" id="manageEmailsBtn">Manage solver emails</button>
@@ -1091,6 +1092,16 @@ td.num.dim { color: var(--ink-300); }
 </aside>
 
 <main class="main">
+
+<!-- Compensation engine — self-contained page embedded in an isolated iframe.
+     Opened from the sidebar "Compensation engine" button. -->
+<div id="compOverlay" style="display:none; position:fixed; inset:0; z-index:1000; background:#fff; flex-direction:column;">
+  <div style="display:flex; align-items:center; gap:14px; padding:9px 18px; background:#000; color:#fff;">
+    <button class="small-btn" onclick="closeCompensation()">← Back to Performance portal</button>
+    <strong style="font-size:13px; letter-spacing:0.02em;">Solver Compensation Engine</strong>
+  </div>
+  <iframe id="compFrame" title="Compensation engine" style="flex:1; width:100%; border:0;"></iframe>
+</div>
 
 <div class="page-header">
   <div>
@@ -1822,6 +1833,16 @@ function render() {
    whichever view just became visible.
    ============================================================ */
 let currentView = "overview";
+
+// ── Compensation engine (embedded page) ──────────────────────────────────
+function openCompensation() {
+  const frame = document.getElementById("compFrame");
+  if (!frame.getAttribute("src")) frame.setAttribute("src", "/compensation");
+  document.getElementById("compOverlay").style.display = "flex";
+}
+function closeCompensation() {
+  document.getElementById("compOverlay").style.display = "none";
+}
 
 function switchView(name) {
   currentView = name;
@@ -3475,6 +3496,9 @@ document.getElementById("drawerBackdrop").addEventListener("click", () => {
   closeDrawer();
   closeRegionDrawer();
 });
+
+// Compensation engine
+document.getElementById("openCompBtn").addEventListener("click", openCompensation);
 
 // Add solver buttons
 document.getElementById("addSolverBtn").addEventListener("click", openAddSolverModal);

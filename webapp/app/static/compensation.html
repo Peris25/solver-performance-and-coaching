@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solver Compensation Engine — Solvit Limited</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --solvit-black: #0A0A0A;
+  --solvit-black-soft: #1F1F1F;
+  --solvit-red: #E63946;
+  --solvit-red-dark: #C42836;
+  --solvit-red-light: #FBE4E5;
+  --bg: #FAFAFA;
+  --surface: #FFFFFF;
+  --surface-2: #F5F5F5;
+  --text: #1A1A1A;
+  --muted: #6B6B6B;
+  --border: #E5E5E5;
+  --border-strong: #CFCFCF;
+  --success: #2A9D8F;
+  --warn: #E76F51;
+  --band1: #FBE4E5;
+  --band2: #FFE8D6;
+  --band3: #D8E8E2;
+  --tier1: #FFEBEC;
+  --tier2: #FFF3E8;
+  --tier3: #F4F4F4;
+  --tier4: #EAEAEA;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+.numeric { font-family: 'JetBrains Mono', 'Courier New', monospace; font-feature-settings: 'tnum'; }
+
+header { background: var(--solvit-black); color: #fff; padding: 18px 36px; border-bottom: 3px solid var(--solvit-red); }
+.header-inner { max-width: 1800px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-mark { background: var(--solvit-red); color: #fff; font-weight: 800; font-size: 20px; padding: 6px 14px; letter-spacing: -0.02em; font-family: 'Plus Jakarta Sans', sans-serif; }
+.brand-text h1 { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.brand-text .sub { font-size: 11px; opacity: 0.7; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 2px; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.75); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #5CD3A8; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }
+
+/* Tab nav */
+.tabs { background: var(--solvit-black); padding: 0 36px; display: flex; gap: 0; border-bottom: 1px solid #333; }
+.tab { color: rgba(255,255,255,0.6); padding: 10px 22px; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; letter-spacing: 0.02em; }
+.tab:hover { color: #fff; }
+.tab.active { color: #fff; border-bottom-color: var(--solvit-red); }
+
+main { max-width: 1800px; margin: 0 auto; padding: 22px 36px 80px; }
+.view { display: none; }
+.view.active { display: block; }
+
+.section { margin-bottom: 22px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; padding-bottom: 9px; border-bottom: 2px solid var(--solvit-black); }
+.section-head h2 { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.section-head .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 500; }
+
+.period-bar { background: var(--surface); border: 1px solid var(--border); padding: 16px 22px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.period-bar .period-label-strong { font-weight: 700; color: var(--solvit-black); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; }
+.period-input { display: flex; flex-direction: column; gap: 3px; }
+.period-input label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.period-input input { font-family: 'Inter', sans-serif; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border-strong); background: #fff; }
+.period-input input:focus { outline: 2px solid var(--solvit-red); outline-offset: -1px; }
+.period-days-display { background: var(--solvit-black); color: #fff; padding: 8px 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
+
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.metric { background: var(--surface); border: 1px solid var(--border); padding: 16px 20px; position: relative; }
+.metric::before { content: ''; position: absolute; left: 0; top: 0; width: 3px; height: 100%; background: var(--solvit-black); }
+.metric.red::before { background: var(--solvit-red); }
+.metric.success::before { background: var(--success); }
+.metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.metric-value { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 28px; font-weight: 700; margin-top: 5px; letter-spacing: -0.02em; color: var(--solvit-black); }
+.metric-sub { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+.metric-period { font-size: 11px; color: var(--solvit-red); font-weight: 600; margin-top: 1px; letter-spacing: 0.01em; }
+
+.params { background: var(--surface); border: 1px solid var(--border); padding: 16px 20px; }
+.params-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; align-items: end; }
+.param { display: flex; flex-direction: column; gap: 4px; }
+.param-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; }
+.param-input { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; background: #FFFEF5; border: 1px solid var(--border-strong); padding: 7px 10px; width: 100%; color: var(--solvit-black); }
+.param-input:focus { outline: 2px solid var(--solvit-red); outline-offset: -1px; }
+.param-help { font-size: 10px; color: var(--muted); }
+
+.upload-zone { background: var(--surface); border: 2px dashed var(--border-strong); padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.upload-zone.dragging { border-color: var(--solvit-red); background: var(--solvit-red-light); }
+.upload-info { flex: 1; min-width: 260px; }
+.upload-info h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; color: var(--solvit-black); font-family: 'Plus Jakarta Sans', sans-serif; }
+.upload-info p { font-size: 12px; color: var(--muted); }
+.upload-info code { background: var(--surface-2); padding: 1px 5px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { background: var(--solvit-red); color: #fff; border: none; padding: 9px 16px; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.btn:hover { background: var(--solvit-red-dark); }
+.btn-black { background: var(--solvit-black); }
+.btn-black:hover { background: var(--solvit-black-soft); }
+.btn-ghost { background: transparent; color: var(--solvit-black); border: 1px solid var(--border-strong); }
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--solvit-black); }
+.btn-sample { background: #fff; color: var(--solvit-black); border: 1px solid var(--solvit-black); font-weight: 600; padding: 8px 14px; }
+.btn-sample:hover { background: var(--solvit-black); color: #fff; }
+
+.samples-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--border); }
+.samples-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; align-self: center; margin-right: 6px; }
+
+.table-wrap { background: var(--surface); border: 1px solid var(--border); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { background: var(--solvit-black); color: #fff; font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; padding: 9px 10px; text-align: left; position: sticky; top: 0; z-index: 10; }
+th.num { text-align: right; } th.center { text-align: center; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+td.num { text-align: right; font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
+td.center { text-align: center; }
+tr.tier-1 { background: var(--tier1); } tr.tier-2 { background: var(--tier2); }
+tr.tier-3 { background: var(--tier3); } tr.tier-4 { background: var(--tier4); }
+tr.inactive { opacity: 0.55; }
+tr:hover { background: #FFFAFA !important; }
+.solver-name { font-weight: 600; color: var(--solvit-black); }
+.tier-badge { display: inline-block; padding: 1px 7px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; color: #fff; }
+.tier-1 .tier-badge { background: var(--solvit-red); } .tier-2 .tier-badge { background: var(--warn); }
+.tier-3 .tier-badge { background: #8B7B6A; } .tier-4 .tier-badge { background: #999; }
+.inactive-badge { background: #999; color: #fff; padding: 1px 6px; font-size: 9px; font-weight: 700; margin-left: 4px; letter-spacing: 0.04em; }
+.region-anchor-badge { background: #6A4C93; color: #fff; padding: 1px 6px; font-size: 9px; font-weight: 700; margin-left: 4px; letter-spacing: 0.04em; }
+.capped-badge { background: #C08A1E; color: #fff; padding: 1px 6px; font-size: 9px; font-weight: 700; margin-left: 4px; letter-spacing: 0.04em; }
+.adjusted-badge { background: #6A4C93; color: #fff; padding: 1px 6px; font-size: 9px; font-weight: 700; margin-left: 4px; letter-spacing: 0.04em; }
+.override-input { background: #F3EEFB !important; border-color: #6A4C93 !important; width: 60px; }
+.clear-override-btn { background: none; border: none; color: var(--solvit-red-dark); font-size: 13px; font-weight: 700; cursor: pointer; padding: 0 2px; margin-left: 2px; }
+.clear-override-btn:hover { color: var(--solvit-red); }
+.editable { width: 64px; padding: 4px 6px; border: 1px solid var(--border-strong); background: #FFFEF5; font-family: 'JetBrains Mono', monospace; text-align: right; font-size: 12.5px; font-weight: 600; }
+.editable:focus { outline: 2px solid var(--solvit-red); outline-offset: -1px; }
+.editable.calc { width: 70px; }
+.gross-pay { font-weight: 700; color: var(--solvit-black); }
+.net-pay { font-weight: 700; color: var(--success); }
+.wht-cell { color: var(--solvit-red-dark); font-weight: 500; }
+.rate-badge { display: inline-block; padding: 1px 6px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.rate-400 { background: var(--band1); color: var(--solvit-red-dark); }
+.rate-450 { background: var(--band2); color: #8B4513; }
+.rate-500 { background: var(--band3); color: var(--success); }
+
+.filters { display: flex; gap: 9px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+.filter-pill { background: var(--surface); border: 1px solid var(--border-strong); padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600; color: var(--solvit-black); }
+.filter-pill:hover { border-color: var(--solvit-red); color: var(--solvit-red); }
+.filter-pill.active { background: var(--solvit-red); color: #fff; border-color: var(--solvit-red); }
+.search-input { flex: 1; max-width: 240px; border: 1px solid var(--border-strong); padding: 7px 11px; font-size: 12px; background: var(--surface); }
+.search-input:focus { outline: 2px solid var(--solvit-red); outline-offset: -1px; }
+
+.actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
+.note { background: var(--solvit-red-light); border-left: 3px solid var(--solvit-red); padding: 13px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; }
+.note strong { color: var(--solvit-black); }
+
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--solvit-black); color: #fff; padding: 13px 18px; border-left: 4px solid var(--solvit-red); font-size: 12.5px; transform: translateY(120px); opacity: 0; transition: all 0.3s ease; z-index: 100; max-width: 420px; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { border-left-color: var(--solvit-red-dark); }
+.toast.success { border-left-color: var(--success); }
+
+.basis-cell { font-size: 10.5px; color: var(--muted); font-style: italic; }
+.calc-info-row { background: #FFFEF5; border-left: 3px solid var(--warn); padding: 11px 16px; margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
+.calc-info-row strong { color: var(--solvit-black); }
+
+.dash-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.dash-card { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--solvit-black); }
+.dash-card.tier-1-top { border-top-color: var(--solvit-red); }
+.dash-card.tier-2-top { border-top-color: var(--warn); }
+.dash-card.tier-3-top { border-top-color: #8B7B6A; }
+.dash-card.tier-4-top { border-top-color: #999; }
+.dash-card-head { padding: 13px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; justify-content: space-between; }
+.dash-card-head h3 { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700; }
+.dash-card-head .count { font-size: 11px; color: var(--muted); font-weight: 600; }
+.dash-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); padding: 12px 16px; gap: 8px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.dash-stat .k { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.dash-stat .v { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--solvit-black); margin-top: 2px; }
+.dash-card-list { max-height: 260px; overflow-y: auto; }
+.dash-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 16px; font-size: 12px; border-bottom: 1px solid var(--border); }
+.dash-row:last-child { border-bottom: none; }
+.dash-row:hover { background: #FFFAFA; }
+.dash-row .dname { font-weight: 600; color: var(--solvit-black); }
+.dash-row .djobs { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--solvit-red-dark); }
+.dash-row .dempty { color: var(--muted); font-style: italic; font-size: 11px; }
+
+@media (max-width: 1000px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .params-grid { grid-template-columns: repeat(2, 1fr); }
+  main { padding: 16px 12px 60px; }
+  header { padding: 14px 16px; }
+  .tabs { padding: 0 12px; }
+}
+.loading-overlay{position:fixed;inset:0;background:rgba(10,10,10,0.55);display:flex;align-items:center;justify-content:center;z-index:200;}
+.loading-spinner{width:40px;height:40px;border:4px solid rgba(255,255,255,0.2);border-top-color:var(--solvit-red);border-radius:50%;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.period-history-pill{display:inline-block;background:var(--surface);border:1px solid var(--border-strong);padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;margin:3px;}
+.period-history-pill:hover{border-color:var(--solvit-red);color:var(--solvit-red);}
+.dash-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--solvit-black);}
+.dash-card.tier-1-top{border-top-color:var(--solvit-red);}
+.dash-card.tier-2-top{border-top-color:var(--warn);}
+.dash-card.tier-3-top{border-top-color:#8B7B6A;}
+.dash-card.tier-4-top{border-top-color:#999;}
+.dash-card-head{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;}
+.dash-card-head h3{font-family:"Plus Jakarta Sans",sans-serif;font-size:15px;font-weight:700;}
+.dash-card-head .count{font-size:11px;color:var(--muted);font-weight:600;}
+.dash-card-stats{display:grid;grid-template-columns:repeat(3,1fr);padding:12px 16px;gap:8px;border-bottom:1px solid var(--border);background:var(--surface-2);}
+.dash-stat .k{font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-weight:600;}
+.dash-stat .v{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700;color:var(--solvit-black);margin-top:2px;}
+.dash-card-list{max-height:260px;overflow-y:auto;}
+.dash-row{display:flex;justify-content:space-between;align-items:center;padding:7px 16px;font-size:12px;border-bottom:1px solid var(--border);}
+.dash-row:last-child{border-bottom:none;}
+.dash-row:hover{background:#FFFAFA;}
+.dash-row .dname{font-weight:600;color:var(--solvit-black);}
+.dash-row .djobs{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--solvit-red-dark);}
+.dash-row .dempty{color:var(--muted);font-style:italic;font-size:11px;}
+.adjusted-badge{background:#6A4C93;color:#fff;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;letter-spacing:0.04em;}
+.capped-badge{background:#C08A1E;color:#fff;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px;letter-spacing:0.04em;}
+.override-input{background:#F3EEFB!important;border-color:#6A4C93!important;width:64px;}
+.clear-override-btn{background:none;border:none;color:var(--solvit-red-dark);font-size:13px;font-weight:700;cursor:pointer;padding:0 2px;margin-left:2px;}
+.calc-info-row{background:#FFFEF5;border-left:3px solid var(--warn);padding:11px 16px;margin-bottom:10px;font-size:12px;line-height:1.5;}
+.calc-info-row strong{color:var(--solvit-black);}
+.basis-cell{font-size:10.5px;color:var(--muted);font-style:italic;}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-mark">SOLVIT</div>
+      <div class="brand-text">
+        <h1>Solver Compensation Engine</h1>
+        <div class="sub">Motor Valuers &amp; Assessors · Internal tool</div>
+      </div>
+    </div>
+    <div class="status"><span class="status-dot"></span><span id="statusText">Connecting…</span></div>
+  </div>
+</header>
+<nav class="tabs">
+  <div class="tab active" data-view="dashboard">Dashboard</div>
+  <div class="tab" data-view="payroll">Payroll &amp; Pay Computation</div>
+  <div class="tab" data-view="calculations">Calculations &amp; Thresholds</div>
+  <div class="tab" data-view="billing">Billing Schedule</div>
+</nav>
+<main>
+
+<!-- DASHBOARD -->
+<div class="view active" id="view-dashboard">
+<section class="section">
+  <div class="section-head"><h2>All Solvers, At a Glance</h2><span class="eyebrow" id="dashPeriodLabel">—</span></div>
+  <div class="filters" style="margin-bottom:16px;">
+    <span style="font-size:12px;color:var(--muted);font-weight:600;margin-right:4px;">Group by:</span>
+    <span class="filter-pill active" data-dash-group="region">Region</span>
+    <span class="filter-pill" data-dash-group="tier">Tier</span>
+    <span style="flex:1;"></span>
+    <button class="btn btn-black" onclick="exportCurrentPeriod()">Download This Period (Excel)</button>
+  </div>
+  <div id="dashCards" class="dash-cards"></div>
+</section>
+</div>
+
+<!-- PAYROLL -->
+<div class="view" id="view-payroll">
+<section class="section">
+  <div class="section-head"><h2>Reporting Period</h2></div>
+  <div class="period-bar">
+    <span class="period-label-strong" id="periodDisplay">May 2026</span>
+    <div class="period-input"><label>Start Date</label><input type="date" id="periodStart" value="2026-05-01"></div>
+    <div class="period-input"><label>End Date</label><input type="date" id="periodEnd" value="2026-05-31"></div>
+    <div class="period-days-display"><span id="periodDays">31</span> days</div>
+    <div class="period-input"><label>Custom Label</label><input type="text" id="periodLabel" placeholder="May 2026" style="width:160px;"></div>
+  </div>
+</section>
+<section class="section">
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Active Solvers</div><div class="metric-value numeric" id="m-solvers">—</div><div class="metric-sub" id="m-solvers-sub">of total roster</div></div>
+    <div class="metric red"><div class="metric-label">Total Standard Jobs</div><div class="metric-value numeric" id="m-jobs">—</div><div class="metric-period" id="m-jobs-period">—</div></div>
+    <div class="metric red"><div class="metric-label">Total Net Pay (KSh)</div><div class="metric-value numeric" id="m-pay">—</div><div class="metric-sub">After 5% WHT</div></div>
+    <div class="metric success"><div class="metric-label">Direct Margin %</div><div class="metric-value numeric" id="m-margin">—</div><div class="metric-sub" id="m-margin-sub">—</div></div>
+  </div>
+</section>
+<section class="section">
+  <div class="section-head"><h2>Model Parameters</h2></div>
+  <div class="params"><div class="params-grid">
+    <div class="param"><span class="param-label">Band 1 Rate</span><input type="number" class="param-input" id="p-rate1" value="400"><span class="param-help">KSh/job, base</span></div>
+    <div class="param"><span class="param-label">Band 2 Rate</span><input type="number" class="param-input" id="p-rate2" value="450"><span class="param-help">KSh/job, mid</span></div>
+    <div class="param"><span class="param-label">Band 3 Rate</span><input type="number" class="param-input" id="p-rate3" value="500"><span class="param-help">KSh/job, top</span></div>
+    <div class="param"><span class="param-label">Stretch Floor</span><input type="number" class="param-input" id="p-floor" value="1.15" step="0.05"></div>
+    <div class="param"><span class="param-label">WHT Rate</span><input type="number" class="param-input" id="p-wht" value="5" step="0.5"><span class="param-help">% withholding tax</span></div>
+    <div class="param"><span class="param-label">Revenue / Job</span><input type="number" class="param-input" id="p-rev" value="950"><span class="param-help">KSh, for margin</span></div>
+  </div>
+  <div class="params-grid" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+    <div class="param"><span class="param-label">T1 Cap (jobs/day)</span><input type="number" class="param-input" id="p-t1day" value="16"></div>
+    <div class="param"><span class="param-label">T2 Ceiling (jobs/day)</span><input type="number" class="param-input" id="p-t2day" value="18"></div>
+    <div class="param"><span class="param-label">Working Days/Month</span><input type="number" class="param-input" id="p-workdays" value="22"></div>
+    <div class="param" style="grid-column:span 3;"><span class="param-label">Caps</span>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;padding-top:6px;">T1: <span id="t1Cap">352</span>/mo &nbsp;·&nbsp; T2: <span id="t2Cap">396</span>/mo</div>
+    </div>
+  </div></div>
+</section>
+<section class="section">
+  <div class="section-head"><h2>Upload Monthly Earnings</h2></div>
+  <div class="upload-zone" id="dropZone">
+    <div class="upload-info">
+      <h3>Drop or choose a Solvit earnings file</h3>
+      <p>Accepts the per-job valuations export (columns <code>Solver_name</code>, <code>Request_type</code>, <code>Solver_earnings</code>) or an aggregated <code>Solver_Earnings_*</code> summary. Standard jobs = (Fleet + Non-fleet earnings) ÷ 400; Assessment / Accident-scene earnings feed the assessment field.</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none">
+    <div class="btn-row">
+      <button class="btn" onclick="document.getElementById('fileInput').click()">Choose file</button>
+      <button class="btn btn-ghost" onclick="clearAllJobs()">Clear all</button>
+    </div>
+  </div>
+  <div class="samples-row">
+    <span class="samples-label">Sample data:</span>
+    <button class="btn btn-sample" onclick="loadSample('Jan 2026')">Jan 2026</button>
+    <button class="btn btn-sample" onclick="loadSample('April 2026')">April 2026</button>
+    <button class="btn btn-sample" onclick="loadSample('May 2026')">May 2026</button>
+    <button class="btn btn-sample" onclick="loadSample('Jun 1-15 2026')">Jun 1–15 2026</button>
+  </div>
+  <div id="periodHistorySection" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:none;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;font-weight:600;color:var(--muted);margin-bottom:6px;">Saved Periods</div>
+    <div id="periodHistoryPills"></div>
+  </div>
+</section>
+<section class="section">
+  <div class="section-head"><h2>Per-Solver Pay Computation</h2><span class="eyebrow" id="rowCount">—</span></div>
+  <div class="filters">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search solver or region…">
+    <span class="filter-pill active" data-filter="all">All Tiers</span>
+    <span class="filter-pill" data-filter="Tier 1">Tier 1</span>
+    <span class="filter-pill" data-filter="Tier 2">Tier 2</span>
+    <span class="filter-pill" data-filter="Tier 3">Tier 3</span>
+    <span class="filter-pill" data-filter="Tier 4">Tier 4</span>
+    <span class="filter-pill active" data-filter="active">With jobs this period</span>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>Solver</th><th>Region</th><th>Tier</th>
+      <th class="num">T1 (per)</th><th class="num">T2 (per)</th>
+      <th class="num">Std Jobs</th><th class="center">Top Rate</th>
+      <th class="num">Gross Pay</th><th class="num">Assessment</th><th class="num">Total Gross</th>
+      <th class="num">WHT (5%)</th><th class="num">Net Pay</th><th class="num">vs Flat 400</th>
+    </tr></thead>
+    <tbody id="tableBody"></tbody>
+  </table></div>
+  <div class="actions">
+    <button class="btn" onclick="exportPayrollCSV()">Export Payroll CSV</button>
+    <button class="btn btn-black" onclick="exportCurrentPeriod()">Export Full Report (Excel)</button>
+    <button class="btn btn-ghost" onclick="saveCurrentPeriod()">Save Period to History</button>
+    <button class="btn btn-ghost" onclick="downloadTemplate()">Download CSV Template</button>
+  </div>
+</section>
+</div>
+
+<!-- CALCULATIONS -->
+<div class="view" id="view-calculations">
+<section class="section">
+  <div class="section-head"><h2>Threshold Calculations</h2><span class="eyebrow">Edit historical data · API recomputes thresholds live</span></div>
+  <div class="calc-info-row">
+    <strong>How thresholds are set (v5):</strong> T1 = Best Average (own personal peak), capped at 16/day × 22 days = 352/mo.
+    Best Average uses the regional benchmark (Regent 2024 × 15% market share ÷ headcount) for solvers with ≤1 period of real history.
+    T2 Multiplier shrinks linearly as a solver approaches the 18/day × 22 = 396/mo ceiling.
+    T2 = T1 × Multiplier, capped at 396/mo. Set a <strong>Manual Override</strong> when you have information outside the model — all changes are audit-logged.
+  </div>
+  <div class="filters">
+    <input type="text" class="search-input" id="calcSearchInput" placeholder="Search solver or region…">
+    <span class="filter-pill" data-calc-filter="new">New solvers (≤1 period)</span>
+    <span class="filter-pill active" data-calc-filter="all">All solvers</span>
+    <span style="width:1px;background:var(--border-strong);height:22px;margin:0 4px;"></span>
+    <span style="font-size:11px;color:var(--muted);font-weight:600;">View:</span>
+    <span class="filter-pill active" data-calc-group="flat">Flat list</span>
+    <span class="filter-pill" data-calc-group="region">By Region</span>
+    <span class="filter-pill" data-calc-group="tier">By Tier</span>
+    <button class="btn btn-ghost" onclick="refreshSolvers()" style="margin-left:auto;">↻ Refresh</button>
+  </div>
+  <div id="calcGroupedWrap"></div>
+  <div class="table-wrap" id="calcFlatWrap"><table>
+    <thead><tr>
+      <th>Solver</th><th>Region</th>
+      <th class="num">Region Benchmark</th>
+      <th class="num">2024 Avg</th><th class="num">2025 Avg</th><th class="num">2026 Avg</th>
+      <th class="num"># Periods</th><th class="num">Blended Avg</th>
+      <th class="num">Best Average</th><th class="num">Manual Override</th>
+      <th class="num">Multiplier</th><th class="num">T1</th><th class="num">T2</th>
+      <th>Basis</th>
+    </tr></thead>
+    <tbody id="calcTableBody"></tbody>
+  </table></div>
+</section>
+</div>
+
+<!-- BILLING -->
+<div class="view" id="view-billing">
+<section class="section">
+  <div class="section-head"><h2>Billing Schedule</h2><span class="eyebrow">Per-solver invoice details</span></div>
+  <div class="note"><strong>Workflow:</strong> Load data on the Payroll tab → switch here → download. Each row is the solver's formal pay breakdown for raising their invoice.</div>
+  <div class="filters" style="margin-top:14px;">
+    <input type="text" class="search-input" id="billSearchInput" placeholder="Search solver…">
+    <span style="font-size:12px;color:var(--muted);">Period: <strong id="billPeriodLabel" style="color:var(--solvit-black);">—</strong> · <strong id="billActiveCount">0</strong> active solvers</span>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>Solver Name</th><th>Region</th><th>Period Start</th><th>Period End</th><th class="num">Days</th>
+      <th class="num">Std Jobs</th><th class="num">Gross Pay</th><th class="num">Assessment</th>
+      <th class="num">Total Gross</th><th class="num">WHT (5%)</th><th class="num">Net Pay (Invoice Amount)</th>
+    </tr></thead>
+    <tbody id="billTableBody"></tbody>
+  </table></div>
+  <div class="actions">
+    <button class="btn" onclick="exportBillingSchedule()">Download Billing Schedule (Excel)</button>
+    <button class="btn btn-black" onclick="exportBillingCSV()">Download Billing CSV</button>
+  </div>
+</section>
+</div>
+
+</main>
+<div id="toast" class="toast"></div>
+<div id="loadingOverlay" class="loading-overlay" style="display:none;"><div class="loading-spinner"></div></div>
+<script>
+// ═══ Solvit Compensation Engine — Production (API-connected) ═══
+// Computation delegated to /api/* endpoints (FastAPI + Postgres).
+// This file: UI, rendering, file upload/export, sample loading.
+
+const SAMPLES = {"Jan 2026":{"start":"2026-01-01","end":"2026-01-31","jobs":{"ben mwaura":[366,3200],"samuel home":[337,800],"paul muthini":[297,800],"robert kinyanjui":[235,0],"george kinyanjui":[226,2400],"nahashon mwaura":[224,800],"esphan maina":[219,0],"isaac munanga":[196,0],"david wambua":[176,1600],"stephen mwangi":[163,0],"wycliff mogoi":[162,0],"brian kingori":[161,0],"cornel otieno":[141,800],"david ndubi":[137,0],"basil ogola":[134,0],"mark oloo":[131,800],"daniel musunza":[119,0],"elijah joseph":[117,0],"mathew muli":[109,0],"peter ndirangu":[108,0],"kuko peter":[103,0],"james ngwareini":[99,0],"josphat mwangi":[99,0],"joshua ochieng":[97,0],"fahim afzal":[88,1600],"joe kamande":[91,0],"charles karime":[89,0],"daniel sonje":[87,0],"joseph muiruri":[87,0],"daniel thayo":[86,0],"samson mwituria":[85,0],"brian oloo":[84,0],"stanley gichuki":[79,0],"naphtali ochieng":[76,800],"lilian kangethe":[75,0],"richard otieno":[73,0],"kepher ngiela":[70,0],"michael njauini":[65,0],"ken phillip":[63,0],"robert wangombe":[62,0],"hamza afzal":[60,0],"eugine calvine":[59,0],"james konde":[58,0],"naftaly mwongela":[56,0],"john fondo":[51,0],"victor chepkwony":[51,0],"kennedy munguti":[48,0],"dennis buyema":[45,0],"moffat musyoki":[44,0],"kibet victor":[44,0],"harrison mugo":[39,0],"kelly ochieng":[39,0],"kelvin munene":[38,0],"silvester mulei":[38,0],"clement kuria":[35,0],"francis chege":[33,0],"edward gathendu":[31,0],"mutavi mbithi":[31,0],"emmaculate muli":[30,0],"peter muriama":[28,0],"nick mutuma":[25,0],"benjamin mumo":[23,0],"job wepukhulu":[21,0],"khamisi mbudzya":[19,800],"michael mwitari":[19,0],"emmanuel simiyu":[15,800],"naphetal mogeni":[16,0],"alvin khayo":[16,0],"josphat ndiritu":[15,0],"james mathenge":[12,0],"samuel kamau":[11,0],"philip lopeker":[11,0],"kiprotich duncan":[10,0],"alfred barasa":[8,0],"michael juma":[8,0],"chrispin oduor":[8,0],"james aiko":[7,0],"dennis mutugi":[6,0],"dennis githinji":[5,0],"martin muriungi":[5,0],"andrew ndege":[4,0],"erick mwendwa":[2,0],"faith naome":[2,0],"zaccheaus welangai":[2,0],"gilbert kinyua":[1,0],"peris odhiambo":[1,0],"test solver":[1,0],"timothy airo":[1,0],"duncan kariuki":[1,0],"mansi patel":[1,0]}},"April 2026":{"start":"2026-04-01","end":"2026-04-30","jobs":{"ben mwaura":[306,800],"samuel home":[292,1600],"paul muthini":[240,800],"robert kinyanjui":[234,0],"david ndubi":[207,0],"esphan maina":[204,0],"isaac munanga":[187,0],"george kinyanjui":[151,800],"brian kingori":[145,800],"cornel otieno":[145,800],"david wambua":[136,0],"mathew muli":[135,0],"nahashon mwaura":[133,0],"joshua ochieng":[125,800],"josphat mwangi":[119,3200],"charles karime":[123,0],"daniel sonje":[122,0],"basil ogola":[121,0],"stephen mwangi":[118,800],"joseph muiruri":[110,0],"elijah joseph":[106,0],"james ngwareini":[104,800],"daniel musunza":[99,800],"peter ndirangu":[99,800],"richard otieno":[97,0],"robert wangombe":[88,3200],"mark oloo":[96,0],"naphtali ochieng":[93,0],"fahim afzal":[90,0],"brian oloo":[85,1600],"wycliff mogoi":[76,0],"john fondo":[71,800],"naphetal mogeni":[70,0],"michael njauini":[69,0],"mutavi mbithi":[63,800],"daniel thayo":[62,0],"samson mwituria":[57,0],"kepher ngiela":[48,800],"james konde":[48,0],"kennedy munguti":[45,0],"stanley gichuki":[44,0],"whitney nelima":[43,0],"joe kamande":[38,800],"kibet victor":[40,0],"clement kuria":[39,0],"harrison mugo":[36,800],"lilian kangethe":[36,0],"ken phillip":[33,0],"eugine calvine":[29,800],"edward gathendu":[29,0],"dennis buyema":[28,0],"kelvin munene":[28,0],"samuel mutua":[28,0],"francis chege":[25,800],"silvester mulei":[27,0],"kelly ochieng":[24,0],"michael mwitari":[24,0],"peter muriama":[24,0],"kuko peter":[22,0],"dennis githinji":[20,0],"hamza afzal":[19,0],"paul lole":[17,800],"emmaculate muli":[18,0],"khamisi mbudzya":[18,0],"job wepukhulu":[14,0],"naftaly mwongela":[13,0],"philip lopeker":[11,0],"emmanuel simiyu":[10,0],"kelvin mwenda":[9,0],"kiprotich duncan":[8,0],"moses john":[7,0],"alfred barasa":[4,800],"zaccheaus welangai":[6,0],"benjamin mumo":[5,0],"erick mwendwa":[5,0],"moffat musyoki":[4,0],"martin muriungi":[4,0],"henry ngogoyo":[3,0],"ochuka starlon":[3,0],"amon mwawughanga":[2,0],"peter kahindi":[1,0],"timothy airo":[1,0],"chrispin oduor":[1,0]}},"May 2026":{"start":"2026-05-01","end":"2026-05-31","jobs":{"ben mwaura":[299,0],"samuel home":[244,0],"paul muthini":[221,0],"esphan maina":[203,2400],"isaac munanga":[189,0],"basil ogola":[172,0],"george kinyanjui":[166,1600],"nahashon mwaura":[158,2400],"david ndubi":[141,0],"cornel otieno":[128,800],"joseph muiruri":[127,0],"robert wangombe":[121,1600],"brian kingori":[124,0],"joshua ochieng":[121,800],"stephen mwangi":[109,1600],"wycliff mogoi":[112,0],"david wambua":[110,0],"mathew muli":[103,1600],"daniel sonje":[97,1600],"richard otieno":[98,0],"josphat mwangi":[95,0],"charles karime":[92,0],"daniel musunza":[84,3200],"naphetal mogeni":[90,800],"brian oloo":[90,0],"mark oloo":[83,0],"elijah joseph":[80,800],"fahim afzal":[80,800],"michael njauini":[72,0],"daniel thayo":[66,1600],"peter ndirangu":[70,0],"james ngwareini":[65,1600],"james konde":[68,0],"naphtali ochieng":[65,800],"kepher ngiela":[61,0],"hamza afzal":[54,1600],"stanley gichuki":[58,0],"samson mwituria":[54,0],"kennedy munguti":[49,0],"zaccheaus welangai":[49,0],"clement kuria":[46,0],"joe kamande":[42,800],"mutavi mbithi":[43,0],"harrison mugo":[39,0],"lilian kangethe":[34,0],"dennis buyema":[32,0],"john fondo":[30,800],"whitney nelima":[31,0],"kelly ochieng":[30,0],"kuko peter":[30,0],"silvester mulei":[30,0],"edward gathendu":[29,0],"robert kinyanjui":[29,0],"samuel mutua":[27,0],"kibet victor":[27,0],"francis chege":[26,0],"michael mwitari":[26,0],"eugine calvine":[25,0],"kelvin munene":[25,0],"ochuka starlon":[23,0],"naftaly mwongela":[20,0],"dennis githinji":[19,0],"emmaculate muli":[19,0],"job wepukhulu":[16,800],"khamisi mbudzya":[17,0],"alfred barasa":[15,0],"paul lole":[14,0],"peter muriama":[13,0],"moses melvin":[10,0],"victor ochieng":[8,0],"emmanuel simiyu":[6,0],"moffat musyoki":[6,0],"kiprotich duncan":[6,0],"martin muriungi":[5,0],"mansi patel":[0,1600],"philip lopeker":[4,0],"collins mugo":[3,0],"moses john":[3,0],"caleb onduso":[2,0],"erick mwendwa":[2,0],"henry ngogoyo":[2,0],"kelvin mwenda":[2,0],"amon mwawughanga":[1,0],"nick mutuma":[1,0],"peter kahindi":[1,0],"timothy airo":[1,0],"duncan kariuki":[1,0]}},"Jun 1-15 2026":{"start":"2026-06-01","end":"2026-06-15","jobs":{"ben mwaura":[181,0],"david ndubi":[127,0],"paul muthini":[123,0],"nahashon mwaura":[119,800],"samuel home":[120,0],"david wambua":[115,800],"esphan maina":[111,800],"isaac munanga":[86,0],"stephen mwangi":[86,0],"george kinyanjui":[84,0],"elijah joseph":[77,800],"basil ogola":[77,0],"cornel otieno":[68,0],"joseph muiruri":[67,0],"daniel sonje":[65,0],"charles karime":[61,0],"robert wangombe":[59,800],"fahim afzal":[60,0],"mathew muli":[60,0],"daniel musunza":[54,800],"richard otieno":[52,1600],"brian kingori":[55,0],"naphetal mogeni":[50,0],"peter ndirangu":[49,0],"naphtali ochieng":[44,0],"victor ochieng":[43,0],"zaccheaus welangai":[42,0],"mark oloo":[42,0],"brian oloo":[41,0],"ochuka starlon":[41,0],"josphat mwangi":[41,0],"kepher ngiela":[38,0],"wycliff mogoi":[35,800],"michael njauini":[36,0],"daniel wambua":[35,0],"joshua ochieng":[33,800],"hamza afzal":[28,800],"samson mwituria":[27,0],"james ngwareini":[23,800],"kennedy munguti":[25,0],"daniel thayo":[23,0],"harrison mugo":[22,0],"joe kamande":[21,0],"moses melvin":[20,0],"kuko peter":[19,0],"whitney nelima":[19,0],"dennis buyema":[18,0],"james konde":[18,0],"eugine calvine":[17,0],"lilian kangethe":[17,0],"mutavi mbithi":[17,0],"stanley gichuki":[16,0],"kibet victor":[15,0],"clement kuria":[14,0],"john fondo":[14,0],"edward gathendu":[12,0],"kelvin munene":[11,0],"khamisi mbudzya":[11,0],"peter muriama":[11,0],"emmaculate muli":[10,0],"francis chege":[10,0],"kelly ochieng":[10,0],"michael mwitari":[10,0],"silvester mulei":[10,0],"alfred barasa":[8,0],"dennis githinji":[8,0],"naftaly mwongela":[8,0],"collins mugo":[7,0],"philip lopeker":[7,0],"moses john":[6,0],"paul lole":[6,0],"emmanuel simiyu":[4,0],"kiprotich duncan":[4,0],"bernard chomba":[2,0],"moffat musyoki":[2,0],"duncan kariuki":[2,0],"abdinasir issack adow":[1,0],"caleb onduso":[1,0],"faith naome":[1,0],"kelvin mwenda":[1,0],"martin muriungi":[1,0],"robert kinyanjui":[1,0],"timothy airo":[1,0]}}};
+
+const state = {
+  solvers: [],
+  period: { start: '2026-05-01', end: '2026-05-31', days: 31, label: 'May 2026' },
+  params: { rate1:400, rate2:450, rate3:500, stretch_floor:1.15, wht_pct:5, rev_per_job:950, t1_day:16, t2_day:18, working_days:22 },
+  filter: 'all', activeOnly: true, search: '',
+  calcSearch: '', calcFilter: 'all', calcGroup: 'flat',
+  dashGroup: 'region', billSearch: '', view: 'dashboard',
+};
+
+const norm = s => String(s).toLowerCase().replace(/[^a-z]/g,'');
+const fmt = n => Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0});
+const fmt1 = n => Number(n||0).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+const loading = show => document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+
+// Compensation endpoints live under /api/comp/* in the merged portal (the
+// standalone engine used bare /api/*). Rewrite here so the rest of this file
+// is untouched. credentials:'same-origin' sends the portal's session cookie.
+const COMP_API_BASE = '/api/comp';
+async function api(method, path, body) {
+  const url = path.replace(/^\/api\//, COMP_API_BASE + '/');
+  const res = await fetch(url, {
+    method,
+    credentials: 'same-origin',
+    headers: {'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    // Session expired or not logged in — bounce to the portal login.
+    window.top.location.href = '/login';
+    throw new Error('Not authenticated');
+  }
+  if (!res.ok) throw new Error(`${method} ${url} → ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function boot() {
+  try {
+    loading(true);
+    await refreshSolvers();
+    await loadPeriodHistory();
+    updatePeriod();
+    loadSample('May 2026');
+    bindAll();
+    updateCaps();
+    document.getElementById('statusText').textContent = `Live · ${state.solvers.length} solvers in roster`;
+  } catch(e) {
+    document.getElementById('statusText').textContent = 'API connection failed';
+    toast('Could not connect to server: ' + e.message, 'error');
+  } finally { loading(false); }
+}
+
+async function refreshSolvers() {
+  state.solvers = await api('GET', '/api/solvers');
+  renderCalcTable(); renderDashboard();
+}
+
+async function loadPeriodHistory() {
+  try {
+    const periods = await api('GET', '/api/periods');
+    const wrap = document.getElementById('periodHistorySection');
+    const pills = document.getElementById('periodHistoryPills');
+    if (!periods.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    pills.innerHTML = periods.map(p =>
+      `<span class="period-history-pill" onclick="loadSavedPeriod('${p.start}','${p.end}','${p.label}')">${p.label}</span>`
+    ).join('');
+  } catch {}
+}
+
+async function loadSavedPeriod(start, end, label) {
+  try {
+    loading(true);
+    const entries = await api('GET', `/api/periods/${start}/${end}`);
+    document.getElementById('periodStart').value = start;
+    document.getElementById('periodEnd').value = end;
+    document.getElementById('periodLabel').value = label;
+    updatePeriod();
+    state.solvers.forEach(s => { s.current_month_jobs = 0; s.current_assessment = 0; });
+    entries.forEach(e => {
+      const s = state.solvers.find(x => x.name === e.solver_name);
+      if (s) { s.current_month_jobs = e.std_jobs; s.current_assessment = e.assessment; }
+    });
+    await runCompute();
+    toast(`Loaded: ${label}`, 'success');
+  } catch(e) { toast('Failed to load period: ' + e.message, 'error'); }
+  finally { loading(false); }
+}
+
+async function runCompute() {
+  const jobs = state.solvers
+    .filter(s => (s.current_month_jobs||0) > 0 || (s.current_assessment||0) > 0)
+    .map(s => ({ solver_name: s.name, std_jobs: s.current_month_jobs||0, assessment_earnings: s.current_assessment||0 }));
+  if (!jobs.length) { renderTable(); renderMetrics(); renderBilling(); renderDashboard(); return; }
+  const body = {
+    period_start: state.period.start, period_end: state.period.end,
+    period_label: state.period.label, jobs, params: state.params, save: false,
+  };
+  const result = await api('POST', '/api/compute', body);
+  const rowMap = Object.fromEntries(result.rows.map(r => [r.name, r]));
+  state.solvers.forEach(s => { const r = rowMap[s.name]; if (r) Object.assign(s, r); });
+  renderMetrics(result.summary);
+  renderTable(); renderBilling(); renderDashboard();
+}
+
+function updatePeriod() {
+  const start = document.getElementById('periodStart').value;
+  const end = document.getElementById('periodEnd').value;
+  const custom = document.getElementById('periodLabel').value.trim();
+  if (!start || !end) return;
+  const s = new Date(start), e = new Date(end);
+  const days = Math.round((e-s)/(864e5))+1;
+  state.period = { start, end, days: Math.max(1,days), label: custom || _fmtPeriod(s,e) };
+  document.getElementById('periodDays').textContent = days;
+  document.getElementById('periodDisplay').textContent = state.period.label;
+  document.getElementById('billPeriodLabel').textContent = state.period.label;
+  renderTable(); renderBilling(); renderDashboard();
+}
+
+function _fmtPeriod(s,e) {
+  if (s.getMonth()===e.getMonth()&&s.getFullYear()===e.getFullYear())
+    return s.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  return s.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' – '+e.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+}
+
+function loadSample(name) {
+  const s = SAMPLES[name]; if (!s) return;
+  document.getElementById('periodStart').value = s.start;
+  document.getElementById('periodEnd').value = s.end;
+  document.getElementById('periodLabel').value = '';
+  updatePeriod();
+  state.solvers.forEach(x => { x.current_month_jobs = 0; x.current_assessment = 0; });
+  let matched = 0;
+  for (const [n,[jobs,assess]] of Object.entries(s.jobs)) {
+    const solver = state.solvers.find(x => norm(x.name) === norm(n));
+    if (solver) { solver.current_month_jobs = jobs; solver.current_assessment = assess; matched++; }
+  }
+  runCompute();
+  toast(`Loaded ${name}: ${matched} solvers`, 'success');
+}
+
+function clearAllJobs() {
+  state.solvers.forEach(s => { s.current_month_jobs = 0; s.current_assessment = 0; });
+  renderTable(); renderMetrics(); renderBilling(); renderDashboard();
+  toast('All job counts cleared');
+}
+
+async function saveCurrentPeriod() {
+  const jobs = state.solvers.filter(s=>(s.current_month_jobs||0)>0||(s.current_assessment||0)>0)
+    .map(s=>({solver_name:s.name,std_jobs:s.current_month_jobs||0,assessment_earnings:s.current_assessment||0}));
+  if (!jobs.length) { toast('No data to save', 'error'); return; }
+  try {
+    loading(true);
+    await api('POST','/api/compute',{period_start:state.period.start,period_end:state.period.end,period_label:state.period.label,jobs,params:state.params,save:true});
+    await loadPeriodHistory();
+    toast(`Period "${state.period.label}" saved`, 'success');
+  } catch(e) { toast('Save failed: '+e.message,'error'); }
+  finally { loading(false); }
+}
+
+function renderMetrics(summary) {
+  if (!summary) {
+    let jobs=0,gross=0,net=0,active=0,assess=0;
+    state.solvers.forEach(s=>{
+      const j=s.current_month_jobs||0,a=s.current_assessment||0;
+      if(j>0||a>0)active++;jobs+=j;assess+=a;
+      gross+=s.gross_pay||j*state.params.rate1;
+      net+=s.net_pay||(j*state.params.rate1)*(1-state.params.wht_pct/100);
+    });
+    const rev=jobs*state.params.rev_per_job;
+    summary={active_solvers:active,total_jobs:jobs,total_net:net,revenue:rev,direct_margin_pct:rev>0?((rev-gross-assess)/rev*100):0};
+  }
+  document.getElementById('m-solvers').textContent=summary.active_solvers;
+  document.getElementById('m-solvers-sub').textContent=`of ${state.solvers.length} in roster`;
+  document.getElementById('m-jobs').textContent=fmt(summary.total_jobs);
+  document.getElementById('m-jobs-period').textContent=state.period.label;
+  document.getElementById('m-pay').textContent=fmt(summary.total_net);
+  document.getElementById('m-margin').textContent=summary.direct_margin_pct.toFixed(1)+'%';
+  document.getElementById('m-margin-sub').textContent=`Revenue KSh ${fmt(summary.revenue)}`;
+}
+
+function renderTable() {
+  const q=state.search.toLowerCase();
+  let rows=state.solvers.filter(s=>{
+    if(state.filter!=='all'&&s.tier!==state.filter) return false;
+    if(state.activeOnly&&!(s.current_month_jobs||0)&&!(s.current_assessment||0)) return false;
+    if(q&&!s.name.toLowerCase().includes(q)&&!s.region.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(b.current_month_jobs||0)-(a.current_month_jobs||0));
+  const tbody=document.getElementById('tableBody');
+  tbody.innerHTML='';
+  rows.forEach(s=>{
+    const j=s.current_month_jobs||0,ass=s.current_assessment||0;
+    const gross=s.gross_pay??j*state.params.rate1;
+    const net=s.net_pay??gross*(1-state.params.wht_pct/100);
+    const wht=s.wht??(gross*(state.params.wht_pct/100));
+    const tg=s.total_gross??(gross+ass);
+    const flat=j*state.params.rate1;
+    const tr2=s.top_rate||'—';
+    const rc=tr2==='Ksh 500'?'rate-500':tr2==='Ksh 450'?'rate-450':'rate-400';
+    const tc=s.tier||'Tier 4';
+    const adj=s.is_manually_adjusted?'<span class="adjusted-badge">ADJ</span>':'';
+    const rb=s.used_region_benchmark?'<span class="region-anchor-badge">RB</span>':'';
+    const tr=document.createElement('tr');
+    tr.className=`tier-${tc.split(' ')[1]}`;
+    tr.innerHTML=`<td class="solver-name">${s.name}${adj}${rb}</td><td>${s.region}</td>
+      <td><span class="tier-badge">${tc}</span></td>
+      <td class="num">${s.t1_period||s.t1||'—'}</td><td class="num">${s.t2_period||s.t2||'—'}</td>
+      <td class="num"><input type="number" class="editable" value="${j}" data-name="${s.name}" data-field="jobs" min="0"></td>
+      <td class="center"><span class="rate-badge ${rc}">${tr2}</span></td>
+      <td class="num gross-pay">${fmt(gross)}</td>
+      <td class="num"><input type="number" class="editable" value="${ass}" data-name="${s.name}" data-field="assess" min="0" style="width:76px;"></td>
+      <td class="num">${fmt(tg)}</td><td class="num wht-cell">(${fmt(wht)})</td>
+      <td class="num net-pay">${fmt(net)}</td>
+      <td class="num" style="color:${gross-flat>0?'var(--success)':'var(--muted)'};font-weight:600;">${gross-flat>0?'+':''}${fmt(gross-flat)}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('#tableBody .editable').forEach(inp=>{
+    inp.addEventListener('change',async e=>{
+      const s=state.solvers.find(x=>x.name===e.target.dataset.name);if(!s)return;
+      if(e.target.dataset.field==='jobs') s.current_month_jobs=Math.max(0,Number(e.target.value)||0);
+      else s.current_assessment=Math.max(0,Number(e.target.value)||0);
+      await runCompute();
+    });
+  });
+  document.getElementById('rowCount').textContent=`${rows.length} of ${state.solvers.length} solvers shown`;
+}
+
+function renderDashboard() {
+  const gk=state.dashGroup||'region';
+  const groups={};
+  state.solvers.forEach(s=>{const k=gk==='tier'?s.tier:s.region;if(!groups[k])groups[k]=[];groups[k].push(s);});
+  let keys=Object.keys(groups);
+  if(gk==='tier'){const o=['Tier 1','Tier 2','Tier 3','Tier 4'];keys.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
+  else keys.sort((a,b)=>groups[b].reduce((t,s)=>t+(s.current_month_jobs||0),0)-groups[a].reduce((t,s)=>t+(s.current_month_jobs||0),0));
+  const container=document.getElementById('dashCards');if(!container)return;
+  container.innerHTML='';
+  keys.forEach(key=>{
+    const members=groups[key].slice().sort((a,b)=>(b.current_month_jobs||0)-(a.current_month_jobs||0));
+    const active=members.filter(s=>(s.current_month_jobs||0)>0);
+    const totalJobs=members.reduce((t,s)=>t+(s.current_month_jobs||0),0);
+    const totalGross=members.reduce((t,s)=>t+(s.gross_pay||(s.current_month_jobs||0)*state.params.rate1),0);
+    const topClass=gk==='tier'?`tier-${key.split(' ')[1]}-top`:'';
+    const card=document.createElement('div');card.className=`dash-card ${topClass}`;
+    const rowsHtml=active.length===0
+      ?'<div class="dash-row"><span class="dempty">No jobs logged this period</span></div>'
+      :active.map(s=>{
+        const tr=s.top_rate||'—';
+        const rc=tr==='Ksh 500'?'rate-500':tr==='Ksh 450'?'rate-450':'rate-400';
+        return `<div class="dash-row"><span class="dname">${s.name}${gk==='tier'?' · '+s.region:''}</span><span><span class="rate-badge ${rc}" style="margin-right:8px;">${tr}</span><span class="djobs">${s.current_month_jobs}</span></span></div>`;
+      }).join('');
+    card.innerHTML=`<div class="dash-card-head"><h3>${key}</h3><span class="count">${members.length} solvers · ${active.length} active</span></div>
+      <div class="dash-card-stats">
+        <div class="dash-stat"><div class="k">Total Jobs</div><div class="v">${fmt(totalJobs)}</div></div>
+        <div class="dash-stat"><div class="k">Gross Pay</div><div class="v">${fmt(totalGross)}</div></div>
+        <div class="dash-stat"><div class="k">Active</div><div class="v">${active.length}</div></div>
+      </div><div class="dash-card-list">${rowsHtml}</div>`;
+    container.appendChild(card);
+  });
+  const dl=document.getElementById('dashPeriodLabel');
+  if(dl)dl.textContent=state.period.label+' · grouped by '+(gk==='tier'?'Tier':'Region');
+}
+
+function renderCalcTable() {
+  const flat=document.getElementById('calcFlatWrap'),grp=document.getElementById('calcGroupedWrap');
+  if(state.calcGroup!=='flat'){flat.style.display='none';grp.style.display='';renderCalcGrouped();return;}
+  flat.style.display='';grp.style.display='none';grp.innerHTML='';
+  const q=state.calcSearch.toLowerCase();
+  let rows=state.solvers.filter(s=>{
+    if(state.calcFilter==='new'&&s.active_periods>1) return false;
+    if(q&&!s.name.toLowerCase().includes(q)&&!s.region.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(b.best_average||0)-(a.best_average||0));
+  const tbody=document.getElementById('calcTableBody');tbody.innerHTML='';
+  rows.forEach(s=>{
+    const tc=s.tier||'Tier 4';
+    const adj=s.is_manually_adjusted,rb=s.used_region_benchmark;
+    const ov=s.manual_best_override==null?'':s.manual_best_override;
+    const tr=document.createElement('tr');tr.className=`tier-${tc.split(' ')[1]}`;
+    tr.innerHTML=`<td class="solver-name">${s.name}${adj?'<span class="adjusted-badge">ADJ</span>':''}${rb?'<span class="region-anchor-badge">RB</span>':''}</td>
+      <td>${s.region}</td><td class="num">${fmt1(s.region_baseline||0)}</td>
+      <td class="num"><input class="editable calc" type="number" value="${s.avg_2024||0}" data-name="${s.name}" data-f="avg_2024" step="0.1" min="0"></td>
+      <td class="num"><input class="editable calc" type="number" value="${s.avg_2025||0}" data-name="${s.name}" data-f="avg_2025" step="0.1" min="0"></td>
+      <td class="num"><input class="editable calc" type="number" value="${s.avg_2026||0}" data-name="${s.name}" data-f="avg_2026" step="0.1" min="0"></td>
+      <td class="num">${s.active_periods||0}</td><td class="num">${fmt1(s.blended_avg||0)}</td>
+      <td class="num" style="font-weight:700;color:var(--solvit-red-dark);">${fmt1(s.best_average||0)}</td>
+      <td class="num"><input class="editable calc override-input" type="number" value="${ov}" data-name="${s.name}" data-f="manual_best_override" step="0.1" min="0" placeholder="—">
+        ${adj?`<button class="clear-override-btn" onclick="clearOverride('${s.name.replace(/'/g,"\\'")}')" title="Clear override">✕</button>`:''}</td>
+      <td class="num">${(s.multiplier||0).toFixed(2)}x</td>
+      <td class="num" style="font-weight:700;">${s.t1||0}${s.t1_capped?'<span class="capped-badge">CAP</span>':''}</td>
+      <td class="num" style="font-weight:700;">${s.t2||0}${s.t2_capped?'<span class="capped-badge">CAP</span>':''}</td>
+      <td class="basis-cell">${s.basis||''}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.querySelectorAll('#calcTableBody .editable').forEach(inp=>{
+    inp.addEventListener('change',async e=>{
+      const name=e.target.dataset.name,f=e.target.dataset.f,val=e.target.value.trim();
+      const body={};
+      body[f]=f==='manual_best_override'?(val===''?null:parseFloat(val)):parseFloat(val)||0;
+      try{loading(true);await api('PATCH',`/api/solvers/${encodeURIComponent(name)}`,body);await refreshSolvers();toast(`${name}: updated`,'success');}
+      catch(err){toast(err.message,'error');}
+      finally{loading(false);}
+    });
+  });
+}
+
+function renderCalcGrouped() {
+  const grp=document.getElementById('calcGroupedWrap');
+  const q=state.calcSearch.toLowerCase();
+  let rows=state.solvers.filter(s=>{
+    if(state.calcFilter==='new'&&s.active_periods>1) return false;
+    if(q&&!s.name.toLowerCase().includes(q)&&!s.region.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const gk=state.calcGroup,groups={};
+  rows.forEach(s=>{const k=gk==='tier'?s.tier:s.region;if(!groups[k])groups[k]=[];groups[k].push(s);});
+  let keys=Object.keys(groups);
+  if(gk==='tier'){const o=['Tier 1','Tier 2','Tier 3','Tier 4'];keys.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
+  else keys.sort((a,b)=>groups[b].reduce((t,s)=>t+(s.best_average||0),0)-groups[a].reduce((t,s)=>t+(s.best_average||0),0));
+  let html='';
+  keys.forEach(key=>{
+    const members=groups[key].slice().sort((a,b)=>(b.best_average||0)-(a.best_average||0));
+    const aT1=members.reduce((t,s)=>t+(s.t1||0),0)/members.length;
+    const aT2=members.reduce((t,s)=>t+(s.t2||0),0)/members.length;
+    html+=`<div class="table-wrap" style="margin-bottom:14px;">
+      <div style="background:var(--surface-2);padding:9px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+        <span>${key} <span style="color:var(--muted);font-weight:500;font-size:11px;">${members.length} solvers</span></span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);">avg T1 ${aT1.toFixed(0)} · avg T2 ${aT2.toFixed(0)}</span>
+      </div>
+      <table><thead><tr><th>Solver</th>${gk==='tier'?'<th>Region</th>':'<th>Tier</th>'}
+        <th class="num">Blended Avg</th><th class="num">Best Average</th><th class="num">Multiplier</th>
+        <th class="num">T1</th><th class="num">T2</th><th>Basis</th></tr></thead><tbody>`;
+    members.forEach(s=>{
+      html+=`<tr class="tier-${(s.tier||'Tier 4').split(' ')[1]}">
+        <td class="solver-name">${s.name}${s.is_manually_adjusted?'<span class="adjusted-badge">ADJ</span>':''}${s.used_region_benchmark?'<span class="region-anchor-badge">RB</span>':''}</td>
+        <td>${gk==='tier'?s.region:s.tier}</td>
+        <td class="num">${fmt1(s.blended_avg||0)}</td>
+        <td class="num" style="font-weight:700;color:var(--solvit-red-dark);">${fmt1(s.best_average||0)}</td>
+        <td class="num">${(s.multiplier||0).toFixed(2)}x</td>
+        <td class="num" style="font-weight:700;">${s.t1||0}</td>
+        <td class="num" style="font-weight:700;">${s.t2||0}</td>
+        <td class="basis-cell">${s.basis||''}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  });
+  grp.innerHTML=html;
+}
+
+async function clearOverride(name) {
+  try{loading(true);await api('DELETE',`/api/solvers/${encodeURIComponent(name)}/override`);await refreshSolvers();toast(`${name}: override cleared`,'success');}
+  catch(e){toast(e.message,'error');}finally{loading(false);}
+}
+
+function renderBilling() {
+  const q=state.billSearch.toLowerCase();
+  let rows=state.solvers.filter(s=>{
+    if(!(s.current_month_jobs||0)&&!(s.current_assessment||0)) return false;
+    if(q&&!s.name.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(b.current_month_jobs||0)-(a.current_month_jobs||0));
+  const tbody=document.getElementById('billTableBody');tbody.innerHTML='';
+  rows.forEach(s=>{
+    const gross=s.gross_pay||(s.current_month_jobs||0)*state.params.rate1;
+    const ass=s.current_assessment||0;
+    const tg=s.total_gross||(gross+ass);
+    const wht=s.wht||tg*(state.params.wht_pct/100);
+    const net=s.net_pay||(tg-wht);
+    const tr=document.createElement('tr');tr.className=`tier-${(s.tier||'Tier 4').split(' ')[1]}`;
+    tr.innerHTML=`<td class="solver-name">${s.name}</td><td>${s.region}</td>
+      <td>${state.period.start}</td><td>${state.period.end}</td><td class="num">${state.period.days}</td>
+      <td class="num">${s.current_month_jobs||0}</td><td class="num gross-pay">${fmt(gross)}</td>
+      <td class="num">${fmt(ass)}</td><td class="num">${fmt(tg)}</td>
+      <td class="num wht-cell">(${fmt(wht)})</td><td class="num net-pay" style="font-size:13.5px;">${fmt(net)}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('billActiveCount').textContent=rows.length;
+}
+
+// Excel exports are generated server-side (openpyxl) so the workbook is
+// authoritative, styled, and identical regardless of browser. The server
+// returns a 3-sheet .xlsx: Billing Schedule + Full Breakdown + Summary.
+async function downloadServerXlsx() {
+  const jobs=state.solvers
+    .filter(s=>(s.current_month_jobs||0)>0||(s.current_assessment||0)>0)
+    .map(s=>({solver_name:s.name,std_jobs:s.current_month_jobs||0,assessment_earnings:s.current_assessment||0}));
+  const body={period_start:state.period.start,period_end:state.period.end,
+    period_label:state.period.label,jobs,params:state.params,save:false};
+  try{
+    loading(true);
+    const res=await fetch('/api/comp/export/xlsx',{
+      method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(res.status===401){window.top.location.href='/login';return;}
+    if(!res.ok)throw new Error(`${res.status}: ${await res.text()}`);
+    const blob=await res.blob();
+    const a=Object.assign(document.createElement('a'),
+      {href:URL.createObjectURL(blob),download:`solvit_compensation_${state.period.start}_to_${state.period.end}.xlsx`});
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    toast('Excel exported','success');
+  }catch(e){toast('Export failed: '+e.message,'error');}
+  finally{loading(false);}
+}
+
+function exportCurrentPeriod(){ downloadServerXlsx(); }
+
+function exportPayrollCSV() {
+  const rows=[['Solver Name','Region','Tier','Period','Days','Std Jobs','T1 (per)','T2 (per)','Top Rate','Gross Pay','Assessment','Total Gross','WHT 5%','Net Pay']];
+  state.solvers.forEach(s=>{
+    const j=s.current_month_jobs||0,a=s.current_assessment||0;if(!j&&!a)return;
+    const g=s.gross_pay||j*state.params.rate1,tg=s.total_gross||(g+a),wht=s.wht||tg*(state.params.wht_pct/100);
+    rows.push([s.name,s.region,s.tier,state.period.label,state.period.days,j,s.t1_period||s.t1,s.t2_period||s.t2,s.top_rate||'—',g,a,tg,wht,s.net_pay||(tg-wht)]);
+  });
+  _csv(rows,`payroll_${state.period.start}_to_${state.period.end}.csv`);
+}
+
+// Billing schedule is the first sheet of the same server-generated workbook.
+function exportBillingSchedule(){ downloadServerXlsx(); }
+
+function exportBillingCSV() {
+  const rows=[['Solver Name','Region','Tier','Period Start','Period End','Days','Std Jobs','Gross Pay','Assessment','Total Gross','WHT (5%)','Net Pay']];
+  state.solvers.forEach(s=>{
+    const j=s.current_month_jobs||0,a=s.current_assessment||0;if(!j&&!a)return;
+    const g=s.gross_pay||j*state.params.rate1,tg=s.total_gross||(g+a),wht=s.wht||tg*(state.params.wht_pct/100);
+    rows.push([s.name,s.region,s.tier,state.period.start,state.period.end,state.period.days,j,g,a,tg,-wht,s.net_pay||(tg-wht)]);
+  });
+  _csv(rows,`billing_${state.period.start}_to_${state.period.end}.csv`);
+}
+
+function downloadTemplate() {
+  const rows=[['Solver Name','Standard Jobs','Assessment Earnings (KSh)']];
+  state.solvers.filter(s=>s.active_2026).forEach(s=>rows.push([s.name,'','']));
+  _csv(rows,'solver_jobs_template.csv');
+  toast('Template downloaded','success');
+}
+
+function _csv(rows,filename) {
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:filename});
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('CSV downloaded','success');
+}
+
+function bindUpload() {
+  const dz=document.getElementById('dropZone'),fi=document.getElementById('fileInput');
+  fi.addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}); 
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+}
+
+function handleFile(file) {
+  const r=new FileReader();
+  r.onload=e=>{
+    try{const wb=XLSX.read(e.target.result,{type:'array'});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      processRows(rows,file.name);
+    }catch(err){toast('Failed to parse: '+err.message,'error');}
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function processRows(rows,filename) {
+  if(rows.length<2){toast('File empty','error');return;}
+  // Detect the per-job export format first: a single header row that carries a
+  // Solver_name column plus Request_type / Solver_earnings (one row per job).
+  // This is the standard Solvit valuations export (FJul_App etc.).
+  const h0=(rows[0]||[]).map(c=>String(c||'').trim().toLowerCase());
+  const hasSolverName=h0.some(c=>c==='solver_name'||c==='solver name');
+  const hasReqType=h0.some(c=>c==='request_type'||c==='request type');
+  const hasSolverEarn=h0.some(c=>c==='solver_earnings'||c==='solver earnings');
+  if(hasSolverName&&(hasReqType||hasSolverEarn)){ parseJobExport(rows,h0,filename); return; }
+
+  const cats=[],subs=(rows[1]||[]).map(c=>String(c||'').trim().toLowerCase());
+  let last='';
+  (rows[0]||[]).forEach(v=>{v=String(v||'').trim();if(v)last=v;cats.push(last.toLowerCase());});
+  const hasFleet=cats.some(c=>c==='fleet'||c.startsWith('fleet '));
+  const hasNF=cats.some(c=>c.includes('non-fleet')||c.includes('nonfleet'));
+  if(hasFleet&&hasNF) parseRich(rows,cats,subs,filename);
+  else parseSimple(rows,filename);
+}
+
+// Aggregate a per-job valuations export into per-solver totals.
+// std jobs = (Fleet + Non-fleet earnings) / 400 (the engine's standard-job
+// definition); Assessment-report / Accident-scene earnings feed the
+// assessment field. Rows are grouped by Solver_name and matched to the roster.
+function parseJobExport(rows,header,filename) {
+  const col=names=>header.findIndex(h=>names.includes(h));
+  const nc=col(['solver_name','solver name']);
+  const tc=col(['request_type','request type']);
+  const ec=col(['solver_earnings','solver earnings']);
+  if(nc<0||ec<0){toast('Could not find Solver_name / Solver_earnings columns','error');return;}
+  // Sum job-earnings vs assessment-earnings per solver name.
+  const agg={};   // rawName -> {jobEarn, assessEarn}
+  let totalEarn=0;
+  for(let i=1;i<rows.length;i++){
+    const row=rows[i];if(!row)continue;
+    const name=String(row[nc]||'').trim();if(!name)continue;
+    const type=(tc>=0?String(row[tc]||''):'').toLowerCase();
+    const earn=Number(row[ec])||0;
+    if(!agg[name])agg[name]={jobEarn:0,assessEarn:0};
+    if(type.includes('assessment')||type.includes('accident')) agg[name].assessEarn+=earn;
+    else agg[name].jobEarn+=earn;   // fleet + non-fleet
+    totalEarn+=earn;
+  }
+  state.solvers.forEach(s=>{s.current_month_jobs=0;s.current_assessment=0;});
+  let matched=0;const unmatched=[];
+  for(const [name,v] of Object.entries(agg)){
+    const s=state.solvers.find(x=>norm(x.name)===norm(name));
+    if(s){s.current_month_jobs=Math.round(v.jobEarn/400);s.current_assessment=v.assessEarn;matched++;}
+    else unmatched.push(name);
+  }
+  runCompute();
+  let msg=`Imported ${matched} solvers · Gross KSh ${fmt(totalEarn)}`;
+  if(unmatched.length)msg+=` · ${unmatched.length} unmatched (not in roster): ${unmatched.slice(0,3).join(', ')}${unmatched.length>3?'…':''}`;
+  toast(msg,matched>0?'success':'error');
+}
+
+function parseRich(rows,cats,subs,filename) {
+  let nc=subs.findIndex(h=>h.includes('solver name')||h.includes('solver_name')||h==='name');if(nc<0)nc=0;
+  const findCol=test=>{for(let i=0;i<cats.length;i++)if(test(cats[i])&&subs[i].includes('total')&&subs[i].includes('earnings'))return i;return -1;};
+  const fc=findCol(c=>c==='fleet'||c.startsWith('fleet ')),nfc=findCol(c=>c.includes('non-fleet')||c.includes('nonfleet'));
+  const ac=findCol(c=>c.includes('accident scene')),asc=findCol(c=>c.includes('assessment report'));
+  if(fc<0||nfc<0){toast('Cannot find Fleet/Non-fleet columns','error');return;}
+  state.solvers.forEach(s=>{s.current_month_jobs=0;s.current_assessment=0;});
+  let matched=0,unmatched=[],gross=0;
+  for(let i=2;i<rows.length;i++){
+    const row=rows[i];if(!row||!row[nc])continue;
+    const name=String(row[nc]).trim();if(!name||name.toLowerCase().includes('grand summary'))continue;
+    const fleet=Number(row[fc])||0,nf=Number(row[nfc])||0;
+    const acc=ac>=0?(Number(row[ac])||0):0,ass=asc>=0?(Number(row[asc])||0):0;
+    const jobs=Math.round((fleet+nf)/400),assessE=acc+ass;
+    gross+=fleet+nf+assessE;if(!jobs&&!assessE)continue;
+    const s=state.solvers.find(x=>norm(x.name)===norm(name));
+    if(s){s.current_month_jobs=jobs;s.current_assessment=assessE;matched++;}else unmatched.push(name);
+  }
+  runCompute();
+  let msg=`Imported ${matched} solvers · Gross KSh ${fmt(gross)}`;
+  if(unmatched.length)msg+=` · ${unmatched.length} unmatched: ${unmatched.slice(0,3).join(', ')}${unmatched.length>3?'…':''}`;
+  toast(msg,matched>0?'success':'error');
+}
+
+function parseSimple(rows,filename) {
+  let hr=0;
+  for(let i=0;i<Math.min(rows.length,5);i++){const l=(rows[i]||[]).map(c=>String(c||'').toLowerCase());if(l.some(c=>c.includes('name')||c.includes('solver'))){hr=i;break;}}
+  const h=rows[hr].map(x=>String(x||'').toLowerCase().trim());
+  let nc=h.findIndex(x=>x.includes('name')||x.includes('solver'));
+  let jc=h.findIndex(x=>x.includes('job')||x.includes('count'));
+  let ac=h.findIndex(x=>x.includes('assess'));
+  if(nc<0)nc=0;if(jc<0)jc=1;
+  state.solvers.forEach(s=>{s.current_month_jobs=0;s.current_assessment=0;});
+  let matched=0,unmatched=[];
+  for(let i=hr+1;i<rows.length;i++){
+    const row=rows[i];if(!row||!row[nc])continue;
+    const name=String(row[nc]).trim();if(!name)continue;
+    const jobs=Number(row[jc])||0,assess=ac>=0?(Number(row[ac])||0):0;
+    const s=state.solvers.find(x=>norm(x.name)===norm(name));
+    if(s){s.current_month_jobs=jobs;s.current_assessment=assess;matched++;}else unmatched.push(name);
+  }
+  runCompute();
+  let msg=`Imported ${matched} solvers (simple format)`;if(unmatched.length)msg+=` · ${unmatched.length} unmatched`;
+  toast(msg,matched>0?'success':'error');
+}
+
+function updateCaps() {
+  const t1=document.getElementById('t1Cap'),t2=document.getElementById('t2Cap');
+  if(t1)t1.textContent=state.params.t1_day*state.params.working_days;
+  if(t2)t2.textContent=state.params.t2_day*state.params.working_days;
+}
+
+function toast(msg,kind='') {
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast '+(kind?kind:'')+ ' show';
+  setTimeout(()=>t.classList.remove('show'),4500);
+}
+
+function bindAll() {
+  [['p-rate1','rate1'],['p-rate2','rate2'],['p-rate3','rate3'],['p-floor','stretch_floor'],['p-wht','wht_pct'],['p-rev','rev_per_job'],['p-t1day','t1_day'],['p-t2day','t2_day'],['p-workdays','working_days']]
+    .forEach(([id,key])=>{const el=document.getElementById(id);if(!el)return;el.addEventListener('input',e=>{state.params[key]=Number(e.target.value)||0;updateCaps();runCompute();});});
+  ['periodStart','periodEnd','periodLabel'].forEach(id=>document.getElementById(id)?.addEventListener('change',updatePeriod));
+  document.querySelectorAll('.filter-pill[data-filter]').forEach(p=>{
+    p.addEventListener('click',()=>{
+      const f=p.dataset.filter;
+      if(f==='active'){state.activeOnly=!state.activeOnly;p.classList.toggle('active');}
+      else{document.querySelectorAll('.filter-pill[data-filter]').forEach(x=>{if(x.dataset.filter!=='active')x.classList.remove('active');});p.classList.add('active');state.filter=f;}
+      renderTable();
+    });
+  });
+  document.getElementById('searchInput')?.addEventListener('input',e=>{state.search=e.target.value;renderTable();});
+  document.querySelectorAll('.filter-pill[data-calc-filter]').forEach(p=>{p.addEventListener('click',()=>{document.querySelectorAll('.filter-pill[data-calc-filter]').forEach(x=>x.classList.remove('active'));p.classList.add('active');state.calcFilter=p.dataset.calcFilter;renderCalcTable();});});
+  document.querySelectorAll('.filter-pill[data-calc-group]').forEach(p=>{p.addEventListener('click',()=>{document.querySelectorAll('.filter-pill[data-calc-group]').forEach(x=>x.classList.remove('active'));p.classList.add('active');state.calcGroup=p.dataset.calcGroup;renderCalcTable();});});
+  document.getElementById('calcSearchInput')?.addEventListener('input',e=>{state.calcSearch=e.target.value;renderCalcTable();});
+  document.getElementById('billSearchInput')?.addEventListener('input',e=>{state.billSearch=e.target.value;renderBilling();});
+  document.querySelectorAll('.filter-pill[data-dash-group]').forEach(p=>{p.addEventListener('click',()=>{document.querySelectorAll('.filter-pill[data-dash-group]').forEach(x=>x.classList.remove('active'));p.classList.add('active');state.dashGroup=p.dataset.dashGroup;renderDashboard();});});
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      const v=tab.dataset.view;
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');
+      document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById('view-'+v).classList.add('active');
+      state.view=v;
+      if(v==='calculations')renderCalcTable();
+      if(v==='billing')renderBilling();
+      if(v==='dashboard')renderDashboard();
+    });
+  });
+  bindUpload();
+}
+
+boot();
+</script>
+</body>
+</html>
