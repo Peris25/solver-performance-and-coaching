@@ -300,7 +300,7 @@ tr:hover { background: #FFFAFA !important; }
   <div class="upload-zone" id="dropZone">
     <div class="upload-info">
       <h3>Drop or choose a Solvit earnings file</h3>
-      <p>Accepts standard <code>Solver_Earnings_*</code> Excel (Fleet, Non-fleet, Assessment, Accident scene). Standard jobs = (Fleet + Non-fleet) ÷ 400.</p>
+      <p>Accepts the per-job valuations export (columns <code>Solver_name</code>, <code>Request_type</code>, <code>Solver_earnings</code>) or an aggregated <code>Solver_Earnings_*</code> summary. Standard jobs = (Fleet + Non-fleet earnings) ÷ 400; Assessment / Accident-scene earnings feed the assessment field.</p>
     </div>
     <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none">
     <div class="btn-row">
@@ -884,6 +884,15 @@ function handleFile(file) {
 
 function processRows(rows,filename) {
   if(rows.length<2){toast('File empty','error');return;}
+  // Detect the per-job export format first: a single header row that carries a
+  // Solver_name column plus Request_type / Solver_earnings (one row per job).
+  // This is the standard Solvit valuations export (FJul_App etc.).
+  const h0=(rows[0]||[]).map(c=>String(c||'').trim().toLowerCase());
+  const hasSolverName=h0.some(c=>c==='solver_name'||c==='solver name');
+  const hasReqType=h0.some(c=>c==='request_type'||c==='request type');
+  const hasSolverEarn=h0.some(c=>c==='solver_earnings'||c==='solver earnings');
+  if(hasSolverName&&(hasReqType||hasSolverEarn)){ parseJobExport(rows,h0,filename); return; }
+
   const cats=[],subs=(rows[1]||[]).map(c=>String(c||'').trim().toLowerCase());
   let last='';
   (rows[0]||[]).forEach(v=>{v=String(v||'').trim();if(v)last=v;cats.push(last.toLowerCase());});
@@ -891,6 +900,42 @@ function processRows(rows,filename) {
   const hasNF=cats.some(c=>c.includes('non-fleet')||c.includes('nonfleet'));
   if(hasFleet&&hasNF) parseRich(rows,cats,subs,filename);
   else parseSimple(rows,filename);
+}
+
+// Aggregate a per-job valuations export into per-solver totals.
+// std jobs = (Fleet + Non-fleet earnings) / 400 (the engine's standard-job
+// definition); Assessment-report / Accident-scene earnings feed the
+// assessment field. Rows are grouped by Solver_name and matched to the roster.
+function parseJobExport(rows,header,filename) {
+  const col=names=>header.findIndex(h=>names.includes(h));
+  const nc=col(['solver_name','solver name']);
+  const tc=col(['request_type','request type']);
+  const ec=col(['solver_earnings','solver earnings']);
+  if(nc<0||ec<0){toast('Could not find Solver_name / Solver_earnings columns','error');return;}
+  // Sum job-earnings vs assessment-earnings per solver name.
+  const agg={};   // rawName -> {jobEarn, assessEarn}
+  let totalEarn=0;
+  for(let i=1;i<rows.length;i++){
+    const row=rows[i];if(!row)continue;
+    const name=String(row[nc]||'').trim();if(!name)continue;
+    const type=(tc>=0?String(row[tc]||''):'').toLowerCase();
+    const earn=Number(row[ec])||0;
+    if(!agg[name])agg[name]={jobEarn:0,assessEarn:0};
+    if(type.includes('assessment')||type.includes('accident')) agg[name].assessEarn+=earn;
+    else agg[name].jobEarn+=earn;   // fleet + non-fleet
+    totalEarn+=earn;
+  }
+  state.solvers.forEach(s=>{s.current_month_jobs=0;s.current_assessment=0;});
+  let matched=0;const unmatched=[];
+  for(const [name,v] of Object.entries(agg)){
+    const s=state.solvers.find(x=>norm(x.name)===norm(name));
+    if(s){s.current_month_jobs=Math.round(v.jobEarn/400);s.current_assessment=v.assessEarn;matched++;}
+    else unmatched.push(name);
+  }
+  runCompute();
+  let msg=`Imported ${matched} solvers · Gross KSh ${fmt(totalEarn)}`;
+  if(unmatched.length)msg+=` · ${unmatched.length} unmatched (not in roster): ${unmatched.slice(0,3).join(', ')}${unmatched.length>3?'…':''}`;
+  toast(msg,matched>0?'success':'error');
 }
 
 function parseRich(rows,cats,subs,filename) {
