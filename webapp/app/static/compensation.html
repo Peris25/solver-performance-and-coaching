@@ -554,7 +554,7 @@ function loadSample(name) {
   state.solvers.forEach(x => { x.current_month_jobs = 0; x.current_assessment = 0; });
   let matched = 0;
   for (const [n,[jobs,assess]] of Object.entries(s.jobs)) {
-    const solver = state.solvers.find(x => norm(x.name) === n);
+    const solver = state.solvers.find(x => norm(x.name) === norm(n));
     if (solver) { solver.current_month_jobs = jobs; solver.current_assessment = assess; matched++; }
   }
   runCompute();
