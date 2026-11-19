@@ -28,7 +28,7 @@ def init_db():
     """Create all tables. Safe to call repeatedly."""
     # Import models so they register with Base
     from app import models  # noqa: F401
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
     _migrate_email_send_logs()
     _migrate_solver_phone()
 
