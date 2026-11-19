@@ -547,6 +547,31 @@ td.num.dim { color: var(--ink-300); }
 }
 .email-row .save-btn:hover { background: var(--brand); }
 
+/* New-subsystem forms (fleet / complaints / broadcast) */
+.form-grid { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+.form-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-700); }
+.form-grid input, .form-grid select, .form-grid textarea {
+  padding: 8px 10px; border: 1px solid var(--ink-200); border-radius: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 400; background: #FFFFFF; color: var(--ink-900);
+}
+.form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus { outline: none; border-color: var(--brand); }
+.form-grid .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.pill-active { background: #E7F6EC; color: #1B7A3C; }
+.pill-dormant { background: #FDE9E9; color: var(--brand); }
+.pill-improved { background: #E7F6EC; color: #1B7A3C; }
+.pill-declined { background: #FDE9E9; color: var(--brand); }
+.pill-mixed { background: #FFF3DC; color: #9A6B00; }
+.pill-open { background: #FDE9E9; color: var(--brand); }
+.pill-investigating { background: #FFF3DC; color: #9A6B00; }
+.pill-resolved, .pill-closed, .pill-paid { background: #E7F6EC; color: #1B7A3C; }
+.activity-banner {
+  display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+  background: var(--paper); border: 1px solid var(--ink-100); border-radius: 10px;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 13px;
+}
+.activity-banner b { cursor: pointer; text-decoration: underline dotted; }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 24px; right: 24px;
@@ -1083,7 +1108,6 @@ td.num.dim { color: var(--ink-300); }
 
   <div class="side-footer">
     Signed in as admin
-    <button class="small-btn" id="openCompBtn">💰 Compensation engine</button>
     <button class="small-btn" id="addSolverBtn">+ Add solver</button>
     <button class="small-btn" id="manageSolversBtn">Manage solvers & regions</button>
     <button class="small-btn" id="manageEmailsBtn">Manage solver emails</button>
@@ -1092,16 +1116,6 @@ td.num.dim { color: var(--ink-300); }
 </aside>
 
 <main class="main">
-
-<!-- Compensation engine — self-contained page embedded in an isolated iframe.
-     Opened from the sidebar "Compensation engine" button. -->
-<div id="compOverlay" style="display:none; position:fixed; inset:0; z-index:1000; background:#fff; flex-direction:column;">
-  <div style="display:flex; align-items:center; gap:14px; padding:9px 18px; background:#000; color:#fff;">
-    <button class="small-btn" onclick="closeCompensation()">← Back to Performance portal</button>
-    <strong style="font-size:13px; letter-spacing:0.02em;">Solver Compensation Engine</strong>
-  </div>
-  <iframe id="compFrame" title="Compensation engine" style="flex:1; width:100%; border:0;"></iframe>
-</div>
 
 <div class="page-header">
   <div>
@@ -1120,6 +1134,9 @@ td.num.dim { color: var(--ink-300); }
   <button class="view-tab" data-view="tat" onclick="switchView('tat')">TAT</button>
   <button class="view-tab" data-view="talent" onclick="switchView('talent')">Talent grid</button>
   <button class="view-tab" data-view="solvers" onclick="switchView('solvers')">Solvers</button>
+  <button class="view-tab" data-view="fleet" onclick="switchView('fleet')">Fleet bonus</button>
+  <button class="view-tab" data-view="complaints" onclick="switchView('complaints')">Complaints &amp; accidents</button>
+  <button class="view-tab" data-view="broadcast" onclick="switchView('broadcast')">Broadcast</button>
 </div>
 
 <div class="empty-state" id="emptyState" style="display:none">
@@ -1390,9 +1407,11 @@ td.num.dim { color: var(--ink-300); }
       <h2 class="section-title">Solvers</h2>
       <div class="section-sub">Click any row for the full scorecard, history, and coaching</div>
     </div>
+    <div class="activity-banner" id="activityBanner" style="display:none"></div>
     <div class="solvers-card">
-      <div class="solvers-toolbar">
+      <div class="solvers-toolbar" style="justify-content:space-between">
         <div class="search-box"><input type="text" id="searchBox" placeholder="Search solver name..."></div>
+        <a class="btn" id="exportSolversBtn" href="#">Export this period</a>
       </div>
       <div style="overflow-x:auto">
         <table id="solverTable">
@@ -1417,6 +1436,118 @@ td.num.dim { color: var(--ink-300); }
   </div>
 </div>
 <!-- /view-solvers -->
+
+<div class="view" id="view-fleet">
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Fleet sourcing bonus</h2>
+      <div class="section-sub">Bonus = billed amount (price × approved count) × rate. Rate only applies once the fleet is ≥ the minimum size AND the client has confirmed they're satisfied.</div>
+    </div>
+    <div class="solvers-card">
+      <div class="solvers-toolbar" style="justify-content:space-between">
+        <div style="display:flex; gap:10px; align-items:center">
+          <button class="btn primary" onclick="openFleetForm()">+ Add fleet</button>
+          <label class="btn" style="cursor:pointer">
+            Import from calculator .xlsx
+            <input type="file" id="fleetImportInput" accept=".xlsx,.xls" style="display:none" onchange="importFleetFile(this)">
+          </label>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center">
+          <span id="fleetTotals" class="section-sub"></span>
+          <a class="btn" href="/api/fleet-bonus/export?fmt=csv">Export CSV</a>
+          <a class="btn" href="/api/fleet-bonus/export?fmt=xlsx">Export XLSX</a>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="fleetTable">
+          <thead>
+            <tr>
+              <th>Fleet / client</th><th>Sourced by</th><th style="text-align:right">Fleet size</th>
+              <th style="text-align:right">Price/vehicle</th><th style="text-align:right">Approved</th>
+              <th>Satisfied?</th><th style="text-align:right">Rate</th><th style="text-align:right">Billed</th>
+              <th style="text-align:right">Bonus</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="fleetBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /view-fleet -->
+
+<div class="view" id="view-complaints">
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Complaints &amp; accidents</h2>
+      <div class="section-sub">A simple log of operational complaints and field accidents against a solver.</div>
+    </div>
+    <div class="solvers-card">
+      <div class="solvers-toolbar" style="justify-content:space-between">
+        <button class="btn primary" onclick="openComplaintForm()">+ Log an entry</button>
+        <div style="display:flex; gap:10px">
+          <a class="btn" href="/api/complaints/export?fmt=csv">Export CSV</a>
+          <a class="btn" href="/api/complaints/export?fmt=xlsx">Export XLSX</a>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="complaintsTable">
+          <thead>
+            <tr>
+              <th>Date</th><th>Kind</th><th>Solver</th><th>Region</th><th>Severity</th>
+              <th>Description</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="complaintsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /view-complaints -->
+
+<div class="view" id="view-broadcast">
+  <div class="section">
+    <div class="section-header">
+      <h2 class="section-title">Broadcast message</h2>
+      <div class="section-sub">Send a custom message — with document attachments if needed — to one, several, or all solvers with an email on file.</div>
+    </div>
+    <div class="solvers-card" style="padding:24px">
+      <div class="form-grid">
+        <label>Recipients
+          <select id="broadcastRecipientMode" onchange="onBroadcastModeChange()">
+            <option value="all">All solvers with an email on file</option>
+            <option value="region">By region</option>
+            <option value="individual">Pick individually</option>
+          </select>
+        </label>
+        <div id="broadcastRegionPicker" style="display:none">
+          <label>Region <select id="broadcastRegionSelect"></select></label>
+        </div>
+        <div id="broadcastIndividualPicker" style="display:none">
+          <label>Solvers <select id="broadcastIndividualSelect" multiple style="min-height:120px"></select></label>
+        </div>
+        <label>Subject <input type="text" id="broadcastSubject" placeholder="e.g. Updated vehicle inspection checklist"></label>
+        <label>Message <textarea id="broadcastBody" rows="8" placeholder="Write your message..."></textarea></label>
+        <label>Attachments <input type="file" id="broadcastFiles" multiple></label>
+      </div>
+      <div style="margin-top:14px; display:flex; gap:10px; align-items:center">
+        <button class="btn primary" onclick="sendBroadcast()">Send</button>
+        <span id="broadcastStatus" class="section-sub"></span>
+      </div>
+    </div>
+    <div class="section" style="margin-top:24px">
+      <div class="section-header"><h2 class="section-title">Send log</h2></div>
+      <div style="overflow-x:auto">
+        <table id="broadcastLogTable">
+          <thead><tr><th>Sent</th><th>Solver</th><th>Email</th><th>Subject</th><th>Status</th><th>Attachments</th></tr></thead>
+          <tbody id="broadcastLogBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /view-broadcast -->
 
 </div>
 
@@ -1449,6 +1580,70 @@ td.num.dim { color: var(--ink-300); }
     </div>
     <div class="modal-footer">
       <button class="btn" id="closeEmailsModalBottom">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fleet bonus entry modal -->
+<div class="modal-backdrop" id="fleetFormModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div><h2 id="fleetFormTitle">Add fleet</h2><div class="sub">Mirrors the fleet bonus calculator — rate, billed amount and bonus are computed automatically.</div></div>
+      <button class="btn" onclick="closeFleetForm()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <input type="hidden" id="fleetEntryId">
+        <label>Fleet / client name <input type="text" id="fleetClientName"></label>
+        <label>Sourced by (solver) <input type="text" id="fleetSolverName" list="fleetSolverOptions"></label>
+        <datalist id="fleetSolverOptions"></datalist>
+        <label>Fleet size booked <input type="number" id="fleetSize" min="0"></label>
+        <label>Price per vehicle (Ksh) <input type="number" id="fleetPrice" min="0" step="any"></label>
+        <label>Approved count <input type="number" id="fleetApproved" min="0"></label>
+        <label class="checkbox-row"><input type="checkbox" id="fleetSatisfied"> Client confirmed satisfied / fleet closed</label>
+        <label>Notes <textarea id="fleetNotes" rows="2"></textarea></label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeFleetForm()">Cancel</button>
+      <button class="btn primary" onclick="saveFleetEntry()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Complaint / accident entry modal -->
+<div class="modal-backdrop" id="complaintFormModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div><h2 id="complaintFormTitle">Log an entry</h2></div>
+      <button class="btn" onclick="closeComplaintForm()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <input type="hidden" id="complaintEntryId">
+        <label>Kind
+          <select id="complaintKind"><option value="complaint">Complaint</option><option value="accident">Accident</option></select>
+        </label>
+        <label>Solver <input type="text" id="complaintSolverName" list="fleetSolverOptions"></label>
+        <label>Region <input type="text" id="complaintRegion"></label>
+        <label>Date occurred <input type="datetime-local" id="complaintDate"></label>
+        <label>Severity
+          <select id="complaintSeverity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+        </label>
+        <label>Description <textarea id="complaintDescription" rows="3"></textarea></label>
+        <label>Reported by <input type="text" id="complaintReportedBy"></label>
+        <label>Status
+          <select id="complaintStatus">
+            <option value="open">Open</option><option value="investigating">Investigating</option>
+            <option value="resolved">Resolved</option><option value="closed">Closed</option>
+          </select>
+        </label>
+        <label>Resolution notes <textarea id="complaintResolutionNotes" rows="2"></textarea></label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeComplaintForm()">Cancel</button>
+      <button class="btn primary" onclick="saveComplaintEntry()">Save</button>
     </div>
   </div>
 </div>
@@ -1594,6 +1789,11 @@ td.num.dim { color: var(--ink-300); }
           Seed from Excel
           <input type="file" id="seedSolversInput" accept=".xlsx,.xls" style="display:none">
         </label>
+        <label class="btn ghost" style="cursor:pointer; margin:0" title="Columns: Name, Email, Phone, Region, Location, Active">
+          Upload solver details
+          <input type="file" id="solverDetailsInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="importSolverDetails(this)">
+        </label>
+        <a class="btn ghost" href="/api/registered-solvers/export?fmt=xlsx" style="margin:0">Download current list</a>
         <button class="btn primary" id="addSolverFromModalBtn">+ Add solver</button>
         <div class="search-box" style="flex:1; max-width:300px; min-width:200px">
           <input type="text" id="solverSearchModal" placeholder="Filter solvers...">
@@ -1686,6 +1886,7 @@ async function init() {
   catch { return; }
   await loadSolverEmails();
   await loadPeriods();
+  try { await loadRegisteredSolvers(); } catch {}
 }
 
 async function loadSolverEmails() {
@@ -1834,20 +2035,14 @@ function render() {
    ============================================================ */
 let currentView = "overview";
 
-// ── Compensation engine (embedded page) ──────────────────────────────────
-function openCompensation() {
-  const frame = document.getElementById("compFrame");
-  if (!frame.getAttribute("src")) frame.setAttribute("src", "/compensation");
-  document.getElementById("compOverlay").style.display = "flex";
-}
-function closeCompensation() {
-  document.getElementById("compOverlay").style.display = "none";
-}
-
 function switchView(name) {
   currentView = name;
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
   document.querySelectorAll(".view-tab").forEach(t => t.classList.toggle("active", t.dataset.view === name));
+  if (name === "fleet" && !fleetLoaded) loadFleet();
+  if (name === "complaints" && !complaintsLoaded) loadComplaints();
+  if (name === "broadcast" && !broadcastLoaded) { loadBroadcastRecipients(); loadBroadcastLog(); }
+  if (name === "solvers") loadActivityAndFlags();
   if (!currentPeriod) return;
   requestAnimationFrame(() => {
     if (name === "overview") renderOverviewDistributions();
@@ -2407,6 +2602,8 @@ async function openDrawer(s) {
         <button class="btn primary" onclick="downloadReport('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Download Word doc</button>
         <button class="btn dark" id="emailSolverBtn" onclick="emailSolver('${escapeHtml(s.name).replace(/'/g, "\\'")}')">✎ Edit &amp; send email</button>
         <button class="btn" onclick="copyIntro('${escapeHtml(s.name).replace(/'/g, "\\'")}')">Copy intro text</button>
+        <button class="btn" onclick="downloadRecap('${escapeHtml(s.name).replace(/'/g, "\\'")}', 'year')">Download year recap</button>
+        <button class="btn" onclick="downloadRecap('${escapeHtml(s.name).replace(/'/g, "\\'")}', 'quarter')">Download quarter recap</button>
       </div>
     </div>
   `;
@@ -3497,9 +3694,6 @@ document.getElementById("drawerBackdrop").addEventListener("click", () => {
   closeRegionDrawer();
 });
 
-// Compensation engine
-document.getElementById("openCompBtn").addEventListener("click", openCompensation);
-
 // Add solver buttons
 document.getElementById("addSolverBtn").addEventListener("click", openAddSolverModal);
 document.getElementById("addSolverFromModalBtn").addEventListener("click", () => {
@@ -3533,6 +3727,352 @@ document.addEventListener("keydown", (e) => {
     closeManageSolversModal();
   }
 });
+
+/* ============================================================
+   FLEET BONUS
+   ============================================================ */
+let fleetLoaded = false;
+let fleetEntries = [];
+
+async function loadFleet() {
+  try {
+    const data = await apiFetch("/api/fleet-bonus");
+    fleetEntries = data.entries || [];
+    fleetLoaded = true;
+    document.getElementById("fleetTotals").textContent =
+      `${fleetEntries.length} fleet(s) · Ksh ${fmtInt(data.totals.billed_amount)} billed · Ksh ${fmtInt(data.totals.bonus_amount)} in bonuses`;
+    renderFleetTable();
+  } catch (err) { toast("Error loading fleet bonus: " + err.message, "error"); }
+}
+
+function renderFleetTable() {
+  const tbody = document.getElementById("fleetBody");
+  tbody.innerHTML = fleetEntries.map(e => `
+    <tr>
+      <td>${escapeHtml(e.fleet_client_name)}</td>
+      <td>${escapeHtml(e.solver_name)}</td>
+      <td style="text-align:right">${fmtInt(e.fleet_size_booked)}</td>
+      <td style="text-align:right">${fmtInt(e.price_per_vehicle)}</td>
+      <td style="text-align:right">${fmtInt(e.approved_count)}</td>
+      <td>${e.client_satisfied ? "Yes" : "No"}</td>
+      <td style="text-align:right">${e.rate != null ? (e.rate * 100).toFixed(1) + "%" : "—"}</td>
+      <td style="text-align:right">${fmtInt(e.billed_amount)}</td>
+      <td style="text-align:right"><b>${fmtInt(e.bonus_amount)}</b></td>
+      <td><span class="pill pill-${e.status}">${e.status}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn" style="padding:4px 10px; font-size:11px" onclick="openFleetForm(${e.id})">Edit</button>
+        ${e.status !== "paid" ? `<button class="btn" style="padding:4px 10px; font-size:11px" onclick="markFleetPaid(${e.id})">Mark paid</button>` : ""}
+        <button class="btn" style="padding:4px 10px; font-size:11px" onclick="deleteFleetEntry(${e.id})">Delete</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="11" style="text-align:center; color:var(--ink-500); padding:24px">No fleets logged yet.</td></tr>`;
+
+  const datalist = document.getElementById("fleetSolverOptions");
+  const names = new Set((registeredSolvers || []).map(s => s.name));
+  datalist.innerHTML = Array.from(names).map(n => `<option value="${escapeHtml(n)}">`).join("");
+}
+
+function openFleetForm(id) {
+  const e = id ? fleetEntries.find(f => f.id === id) : null;
+  document.getElementById("fleetFormTitle").textContent = e ? "Edit fleet" : "Add fleet";
+  document.getElementById("fleetEntryId").value = e ? e.id : "";
+  document.getElementById("fleetClientName").value = e ? e.fleet_client_name : "";
+  document.getElementById("fleetSolverName").value = e ? e.solver_name : "";
+  document.getElementById("fleetSize").value = e ? e.fleet_size_booked : "";
+  document.getElementById("fleetPrice").value = e ? e.price_per_vehicle : "";
+  document.getElementById("fleetApproved").value = e ? e.approved_count : "";
+  document.getElementById("fleetSatisfied").checked = e ? e.client_satisfied : false;
+  document.getElementById("fleetNotes").value = e ? (e.notes || "") : "";
+  document.getElementById("fleetFormModal").classList.add("open");
+}
+function closeFleetForm() { document.getElementById("fleetFormModal").classList.remove("open"); }
+
+async function saveFleetEntry() {
+  const id = document.getElementById("fleetEntryId").value;
+  const payload = {
+    fleet_client_name: document.getElementById("fleetClientName").value.trim(),
+    solver_name: document.getElementById("fleetSolverName").value.trim(),
+    fleet_size_booked: parseInt(document.getElementById("fleetSize").value || "0", 10),
+    price_per_vehicle: parseFloat(document.getElementById("fleetPrice").value || "0"),
+    approved_count: parseInt(document.getElementById("fleetApproved").value || "0", 10),
+    client_satisfied: document.getElementById("fleetSatisfied").checked,
+    notes: document.getElementById("fleetNotes").value.trim() || null,
+  };
+  if (!payload.fleet_client_name || !payload.solver_name) { toast("Fleet/client name and solver are required", "error"); return; }
+  try {
+    if (id) await apiFetch(`/api/fleet-bonus/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    else await apiFetch("/api/fleet-bonus", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    closeFleetForm();
+    await loadFleet();
+    toast("Fleet entry saved", "success");
+  } catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+async function deleteFleetEntry(id) {
+  if (!confirm("Delete this fleet entry?")) return;
+  try { await apiFetch(`/api/fleet-bonus/${id}`, { method: "DELETE" }); await loadFleet(); }
+  catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+async function markFleetPaid(id) {
+  try { await apiFetch(`/api/fleet-bonus/${id}/mark-paid`, { method: "POST" }); await loadFleet(); }
+  catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+async function importFleetFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const form = new FormData();
+  form.append("file", f);
+  try {
+    const res = await fetch("/api/fleet-bonus/import", { method: "POST", credentials: "include", body: form });
+    if (!res.ok) throw new Error((await res.json()).detail || "Import failed");
+    const data = await res.json();
+    toast(`Imported ${data.created} fleet row(s), skipped ${data.skipped}`, "success");
+    await loadFleet();
+  } catch (err) { toast("Error: " + err.message, "error"); }
+  input.value = "";
+}
+
+/* ============================================================
+   COMPLAINTS / ACCIDENTS
+   ============================================================ */
+let complaintsLoaded = false;
+let complaintEntries = [];
+
+async function loadComplaints() {
+  try {
+    const data = await apiFetch("/api/complaints");
+    complaintEntries = data.complaints || [];
+    complaintsLoaded = true;
+    renderComplaintsTable();
+  } catch (err) { toast("Error loading complaints: " + err.message, "error"); }
+}
+
+function renderComplaintsTable() {
+  const tbody = document.getElementById("complaintsBody");
+  tbody.innerHTML = complaintEntries.map(c => `
+    <tr>
+      <td>${c.date_occurred ? c.date_occurred.slice(0, 10) : "—"}</td>
+      <td style="text-transform:capitalize">${escapeHtml(c.kind)}</td>
+      <td>${escapeHtml(c.solver_name)}</td>
+      <td>${escapeHtml(c.region || "—")}</td>
+      <td style="text-transform:capitalize">${escapeHtml(c.severity)}</td>
+      <td style="max-width:320px">${escapeHtml(c.description).slice(0, 140)}${c.description.length > 140 ? "…" : ""}</td>
+      <td><span class="pill pill-${c.status}">${c.status}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn" style="padding:4px 10px; font-size:11px" onclick="openComplaintForm(${c.id})">Edit</button>
+        <button class="btn" style="padding:4px 10px; font-size:11px" onclick="deleteComplaintEntry(${c.id})">Delete</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="8" style="text-align:center; color:var(--ink-500); padding:24px">Nothing logged yet.</td></tr>`;
+}
+
+function openComplaintForm(id) {
+  const c = id ? complaintEntries.find(x => x.id === id) : null;
+  document.getElementById("complaintFormTitle").textContent = c ? "Edit entry" : "Log an entry";
+  document.getElementById("complaintEntryId").value = c ? c.id : "";
+  document.getElementById("complaintKind").value = c ? c.kind : "complaint";
+  document.getElementById("complaintSolverName").value = c ? c.solver_name : "";
+  document.getElementById("complaintRegion").value = c ? (c.region || "") : "";
+  document.getElementById("complaintDate").value = c && c.date_occurred ? c.date_occurred.slice(0, 16) : "";
+  document.getElementById("complaintSeverity").value = c ? c.severity : "medium";
+  document.getElementById("complaintDescription").value = c ? c.description : "";
+  document.getElementById("complaintReportedBy").value = c ? (c.reported_by || "") : "";
+  document.getElementById("complaintStatus").value = c ? c.status : "open";
+  document.getElementById("complaintResolutionNotes").value = c ? (c.resolution_notes || "") : "";
+  document.getElementById("complaintFormModal").classList.add("open");
+}
+function closeComplaintForm() { document.getElementById("complaintFormModal").classList.remove("open"); }
+
+async function saveComplaintEntry() {
+  const id = document.getElementById("complaintEntryId").value;
+  const payload = {
+    kind: document.getElementById("complaintKind").value,
+    solver_name: document.getElementById("complaintSolverName").value.trim(),
+    region: document.getElementById("complaintRegion").value.trim() || null,
+    date_occurred: document.getElementById("complaintDate").value || null,
+    severity: document.getElementById("complaintSeverity").value,
+    description: document.getElementById("complaintDescription").value.trim(),
+    reported_by: document.getElementById("complaintReportedBy").value.trim() || null,
+    status: document.getElementById("complaintStatus").value,
+    resolution_notes: document.getElementById("complaintResolutionNotes").value.trim() || null,
+  };
+  if (!payload.solver_name || !payload.description) { toast("Solver and description are required", "error"); return; }
+  try {
+    if (id) await apiFetch(`/api/complaints/${id}`, { method: "PUT", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    else await apiFetch("/api/complaints", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    closeComplaintForm();
+    await loadComplaints();
+    toast("Entry saved", "success");
+  } catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+async function deleteComplaintEntry(id) {
+  if (!confirm("Delete this entry?")) return;
+  try { await apiFetch(`/api/complaints/${id}`, { method: "DELETE" }); await loadComplaints(); }
+  catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+/* ============================================================
+   BROADCAST MESSAGING
+   ============================================================ */
+let broadcastLoaded = false;
+let broadcastSolvers = [];
+
+async function loadBroadcastRecipients() {
+  try {
+    const data = await apiFetch("/api/broadcast/recipients");
+    broadcastSolvers = data.solvers || [];
+    broadcastLoaded = true;
+    const regionSel = document.getElementById("broadcastRegionSelect");
+    regionSel.innerHTML = (data.regions || []).map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");
+    const indivSel = document.getElementById("broadcastIndividualSelect");
+    indivSel.innerHTML = broadcastSolvers.map(s =>
+      `<option value="${escapeHtml(s.name)}" ${s.has_email ? "" : "disabled"}>${escapeHtml(s.name)}${s.has_email ? "" : " (no email)"}</option>`
+    ).join("");
+  } catch (err) { toast("Error loading recipients: " + err.message, "error"); }
+}
+
+function onBroadcastModeChange() {
+  const mode = document.getElementById("broadcastRecipientMode").value;
+  document.getElementById("broadcastRegionPicker").style.display = mode === "region" ? "block" : "none";
+  document.getElementById("broadcastIndividualPicker").style.display = mode === "individual" ? "block" : "none";
+}
+
+async function sendBroadcast() {
+  const mode = document.getElementById("broadcastRecipientMode").value;
+  const subject = document.getElementById("broadcastSubject").value.trim();
+  const body = document.getElementById("broadcastBody").value.trim();
+  const fileInput = document.getElementById("broadcastFiles");
+  if (!subject || !body) { toast("Subject and message are required", "error"); return; }
+
+  let recipients = "all";
+  if (mode === "region") {
+    const region = document.getElementById("broadcastRegionSelect").value;
+    recipients = broadcastSolvers.filter(s => s.region === region && s.has_email).map(s => s.name).join(",");
+  } else if (mode === "individual") {
+    recipients = Array.from(document.getElementById("broadcastIndividualSelect").selectedOptions).map(o => o.value).join(",");
+  }
+  if (recipients !== "all" && !recipients) { toast("No recipients with an email match your selection", "error"); return; }
+
+  const form = new FormData();
+  form.append("subject", subject);
+  form.append("body", body);
+  form.append("recipients", recipients);
+  Array.from(fileInput.files || []).forEach(f => form.append("files", f));
+
+  document.getElementById("broadcastStatus").textContent = "Sending…";
+  try {
+    const res = await fetch("/api/broadcast", { method: "POST", credentials: "include", body: form });
+    if (!res.ok) throw new Error((await res.json()).detail || "Send failed");
+    const data = await res.json();
+    document.getElementById("broadcastStatus").textContent = `Sent to ${data.sent} of ${data.results.length} recipient(s).`;
+    toast(`Broadcast sent to ${data.sent} solver(s)`, "success");
+    await loadBroadcastLog();
+  } catch (err) {
+    document.getElementById("broadcastStatus").textContent = "";
+    toast("Error: " + err.message, "error");
+  }
+}
+
+async function loadBroadcastLog() {
+  try {
+    const data = await apiFetch("/api/broadcast/log");
+    const tbody = document.getElementById("broadcastLogBody");
+    tbody.innerHTML = (data.log || []).map(r => `
+      <tr>
+        <td>${r.sent_at ? new Date(r.sent_at).toLocaleString() : "—"}</td>
+        <td>${escapeHtml(r.solver_name)}</td>
+        <td>${escapeHtml(r.email_to || "—")}</td>
+        <td>${escapeHtml(r.subject || "—")}</td>
+        <td><span class="pill pill-${r.status === "sent" ? "resolved" : "open"}">${r.status}</span></td>
+        <td>${(r.attachments || []).join(", ") || "—"}</td>
+      </tr>`).join("") || `<tr><td colspan="6" style="text-align:center; color:var(--ink-500); padding:20px">No broadcasts sent yet.</td></tr>`;
+  } catch (err) { /* non-fatal */ }
+}
+
+/* ============================================================
+   ACTIVITY (dormant solvers) + PERFORMANCE-CHANGE FLAGS
+   ============================================================ */
+async function loadActivityAndFlags() {
+  const banner = document.getElementById("activityBanner");
+  try {
+    const [activity, flags] = await Promise.all([
+      apiFetch("/api/solvers/activity"),
+      apiFetch("/api/solvers/performance-flags"),
+    ]);
+    const parts = [];
+    parts.push(`<span><b>${activity.active_count}</b> active · <b>${activity.dormant_count}</b> dormant</span>`);
+    if (activity.dormant_count > 0) {
+      const names = activity.solvers.filter(s => s.status === "dormant").map(s => s.name).join(", ");
+      parts.push(`<span style="color:var(--brand)" title="${escapeHtml(names)}">Dormant: ${escapeHtml(names.length > 90 ? names.slice(0, 90) + "…" : names)}</span>`);
+    }
+    if (flags.available) {
+      const improved = flags.flags.filter(f => f.verdict === "improved").length;
+      const declined = flags.flags.filter(f => f.verdict === "declined").length;
+      parts.push(`<span>vs ${escapeHtml(flags.previous_period)}: <b class="pill-improved" style="padding:2px 6px; border-radius:4px">${improved} improved</b> &nbsp; <b class="pill-declined" style="padding:2px 6px; border-radius:4px">${declined} declined</b></span>`);
+    }
+    banner.innerHTML = parts.join(" &nbsp;·&nbsp; ");
+    banner.style.display = "flex";
+  } catch (err) {
+    banner.style.display = "none";
+  }
+}
+
+/* ============================================================
+   RECAP (annual / quarterly)
+   ============================================================ */
+async function downloadRecap(name, mode) {
+  let year = new Date().getFullYear();
+  let quarter = null;
+  if (mode === "quarter") {
+    const q = prompt("Which quarter (1-4)?", String(Math.floor(new Date().getMonth() / 3) + 1));
+    if (!q) return;
+    quarter = parseInt(q, 10);
+    const y = prompt("Which year?", String(year));
+    if (y) year = parseInt(y, 10);
+  } else {
+    const y = prompt("Which year?", String(year));
+    if (!y) return;
+    year = parseInt(y, 10);
+  }
+  let url = `/api/solvers/${encodeURIComponent(name)}/recap/report?year=${year}`;
+  if (quarter) url += `&quarter=${quarter}`;
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) throw new Error((await res.json()).detail || "No data for that window");
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name.replace(/[^\w]+/g, "_")}_recap.docx`;
+    a.click();
+    toast("Recap downloaded", "success");
+  } catch (err) { toast("Error: " + err.message, "error"); }
+}
+
+// Keep the "Export this period" link on the Solvers tab pointed at whichever period is selected
+const _exportBtnObserver = setInterval(() => {
+  const btn = document.getElementById("exportSolversBtn");
+  if (btn && currentPeriod) btn.href = `/api/periods/${currentPeriod.id}/export?fmt=xlsx`;
+}, 1000);
+
+async function importSolverDetails(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const form = new FormData();
+  form.append("file", f);
+  try {
+    const res = await fetch("/api/registered-solvers/import-details", { method: "POST", credentials: "include", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Import failed");
+    let msg = `${data.added} added, ${data.updated} updated, ${data.emails_set} emails saved`;
+    if (data.problems.length) msg += `. ${data.problems.length} row(s) skipped: ` + data.problems.slice(0, 3).join(" | ");
+    toast(msg, data.problems.length ? "error" : "success");
+    try { await loadRegisteredSolvers(); } catch {}
+    try { await loadSolverEmails(); } catch {}
+    broadcastLoaded = false; fleetLoaded = false;
+  } catch (err) { toast("Error: " + err.message, "error"); }
+  input.value = "";
+}
 
 init();
 </script>

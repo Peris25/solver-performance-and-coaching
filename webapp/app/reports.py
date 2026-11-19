@@ -761,3 +761,110 @@ def build_doc(stats: dict, team: dict, targets: dict,
     doc.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+# ---------------------------------------------------------------------------
+# Annual / quarterly recap doc — a solver's journey across many periods
+# ---------------------------------------------------------------------------
+
+def _recap_trend_png(recap: dict) -> bytes:
+    """Line chart of average TAT and submission rate across the recap window."""
+    timeline = recap.get("timeline") or []
+    labels = [t.get("period_label") or "" for t in timeline]
+    tat = [t.get("avg_total_tat_hrs") for t in timeline]
+    sub = [((t.get("submission_rate") or 0) * 100) if t.get("submission_rate") is not None else None
+           for t in timeline]
+
+    fig, ax1 = plt.subplots(figsize=(7.2, 3.0))
+    x = range(len(labels))
+    ax1.plot(x, tat, marker="o", color=HEX_RED, label="Avg TAT (hrs)")
+    ax1.set_ylabel("Avg TAT (hrs)", color=HEX_RED)
+    ax1.tick_params(axis="y", labelcolor=HEX_RED)
+    ax1.set_xticks(list(x))
+    ax1.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
+
+    ax2 = ax1.twinx()
+    ax2.plot(x, sub, marker="s", color=HEX_NAVY, label="Submission rate (%)")
+    ax2.set_ylabel("Submission rate (%)", color=HEX_NAVY)
+    ax2.tick_params(axis="y", labelcolor=HEX_NAVY)
+    ax2.set_ylim(0, 105)
+
+    fig.tight_layout()
+    return _png_bytes(fig)
+
+
+def build_recap_doc(recap: dict, solver_name: str, window_label: str) -> bytes:
+    """One-page journey summary: totals, trend, best periods, recognition
+    count, over the window the caller already filtered `recap` to
+    (a year or a quarter)."""
+    doc = Document()
+    section = doc.sections[0]
+    section.left_margin = section.right_margin = Cm(1.6)
+    section.top_margin = section.bottom_margin = Cm(1.4)
+
+    title = doc.add_paragraph()
+    r = title.add_run(f"{solver_name} — {window_label} Recap")
+    r.font.size = Pt(20)
+    r.font.bold = True
+    r.font.color.rgb = NAVY
+    r.font.name = "Calibri"
+
+    sub = doc.add_paragraph()
+    rr = sub.add_run(f"{recap.get('periods_covered', 0)} reporting periods with Solvit in this window")
+    rr.font.size = Pt(11)
+    rr.font.color.rgb = GREY if 'GREY' in globals() else NAVY
+    rr.font.name = "Calibri"
+
+    totals = recap.get("totals", {})
+    averages = recap.get("averages", {})
+    recognition = recap.get("recognition", {})
+    best = recap.get("best", {})
+    trend = recap.get("trend", {})
+
+    _heading(doc, "The headline numbers")
+    table = doc.add_table(rows=0, cols=2)
+    table.style = "Light Grid Accent 1"
+    rows = [
+        ("Total valuations completed", fmt_int(totals.get("volume"))),
+        ("Jobs self-initiated (sourced by the solver)", fmt_int(totals.get("jobs_initiated"))),
+        ("Backlog jobs cleared", fmt_int(totals.get("backlog_cleared"))),
+        ("Average time per job across the window", fmt_hrs(averages.get("avg_total_tat_hrs"))),
+        ("Average submission rate", fmt_pct(averages.get("submission_rate"))),
+        ("Average client rating", fmt_rating(averages.get("avg_rating"))),
+        ("Periods recognised as a strong performer", fmt_int(recognition.get("strong_periods"))),
+        ("Periods with a coaching focus area", fmt_int(recognition.get("coaching_periods"))),
+    ]
+    for label, value in rows:
+        row = table.add_row()
+        row.cells[0].text = label
+        row.cells[1].text = str(value)
+
+    _heading(doc, "Trend across the window")
+    tat_dir = {"improved": "got faster", "declined": "slowed down", "steady": "stayed steady",
+               "insufficient_data": "not enough data yet"}.get(trend.get("tat"), "—")
+    sub_dir = {"improved": "improved", "declined": "dropped", "steady": "stayed steady",
+               "insufficient_data": "not enough data yet"}.get(trend.get("submission_rate"), "—")
+    rating_dir = {"improved": "improved", "declined": "dropped", "steady": "stayed steady",
+                  "insufficient_data": "not enough data yet"}.get(trend.get("rating"), "—")
+    _para_with_inline(doc, f"Comparing the first and second half of this window: **average TAT {tat_dir}**, "
+                           f"**submission rate {sub_dir}**, and **client rating {rating_dir}**.")
+
+    if recap.get("timeline"):
+        try:
+            png = _recap_trend_png(recap)
+            _add_image(doc, png, width_in=6.2)
+        except Exception:
+            pass
+
+    _heading(doc, "Best moments")
+    if best.get("fastest_tat_period"):
+        _para_with_inline(doc, f"Fastest average TAT: **{fmt_hrs(best.get('fastest_tat_hrs'))}** "
+                               f"in {best.get('fastest_tat_period')}.")
+    if best.get("highest_rating_period"):
+        _para_with_inline(doc, f"Highest client rating: **{fmt_rating(best.get('highest_rating'))}** "
+                               f"in {best.get('highest_rating_period')}.")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read()

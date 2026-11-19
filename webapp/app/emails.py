@@ -505,3 +505,68 @@ def send_coaching_email(
             if settings.smtp_username:
                 server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(msg)
+
+
+def _send_raw(msg: EmailMessage) -> None:
+    """Shared low-level send, used by send_coaching_email and send_broadcast_email."""
+    if settings.smtp_use_tls:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+            server.starttls(context=context)
+            if settings.smtp_username:
+                server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+            if settings.smtp_username:
+                server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(msg)
+
+
+def send_broadcast_email(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    attachments: Optional[list[tuple[str, bytes, str]]] = None,
+) -> None:
+    """Send a free-form, admin-written message to one solver.
+
+    This is the "communication system" path: a custom subject/body (already
+    token-substituted by the caller via apply_template, if the admin used a
+    bulk template) plus zero or more attachments as (filename, content_bytes,
+    mime_type) tuples — the uploaded documents the admin wants every solver
+    to receive.
+
+    Goes out through the same SMTP relay as coaching emails (point this at
+    the company's Office 365 account's SMTP settings to send "as Outlook" —
+    see DEVELOPER_HANDOFF.md for the alternative of wiring the Microsoft
+    Graph API directly if a no-SMTP app registration is preferred instead).
+    """
+    if not settings.smtp_host:
+        raise EmailNotConfigured(
+            "SMTP is not configured. Set SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, "
+            "and SMTP_FROM_EMAIL in your environment."
+        )
+    if not settings.smtp_from_email:
+        raise EmailNotConfigured("SMTP_FROM_EMAIL is required.")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+    msg["To"] = to_email
+
+    html = (
+        "<html><body style='font-family:-apple-system,system-ui,sans-serif;"
+        "color:#1a1a1a;max-width:600px;line-height:1.6'>"
+        + "".join(f"<p>{line}</p>" if line.strip() else "" for line in body_text.split("\n"))
+        + "</body></html>"
+    )
+    msg.set_content(body_text)
+    msg.add_alternative(html, subtype="html")
+
+    for filename, content, mime_type in (attachments or []):
+        maintype, _, subtype = (mime_type or "application/octet-stream").partition("/")
+        msg.add_attachment(content, maintype=maintype or "application", subtype=subtype or "octet-stream",
+                            filename=filename)
+
+    _send_raw(msg)

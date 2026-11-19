@@ -8,10 +8,7 @@ Two main tables for now:
 History queries are just SELECTs across multiple periods for the same solver name.
 A future User table can be added without disturbing these.
 """
-from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text,
-    Boolean, Date, Numeric, UniqueConstraint,
-)
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -56,7 +53,8 @@ class Period(Base):
     pct_backlog = Column(Float, nullable=True)
     oldest_backlog_days = Column(Float, nullable=True)
 
-    snapshots = relationship("SolverSnapshot", back_populates="period")
+    snapshots = relationship("SolverSnapshot", back_populates="period",
+                             cascade="all, delete-orphan")
 
 
 class SolverSnapshot(Base):
@@ -127,14 +125,17 @@ class EmailSendLog(Base):
     __tablename__ = "email_send_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    period_id = Column(Integer, ForeignKey("periods.id"), nullable=False, index=True)
+    # Broadcast sends aren't tied to a period, so this may be null.
+    period_id = Column(Integer, ForeignKey("periods.id"), nullable=True, index=True)
     solver_name = Column(String(128), nullable=False, index=True)
     email_to = Column(String(255), nullable=False)
     sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(32), nullable=False, default="sent")  # "sent" | "failed" | "skipped"
     error = Column(Text, nullable=True)
-    trigger = Column(String(32), nullable=False, default="manual")  # "manual" | "bulk_targets_missed"
+    trigger = Column(String(32), nullable=False, default="manual")  # "manual" | "bulk_targets_missed" | "broadcast"
     focus_areas = Column(JSON, nullable=False, default=list)  # snapshot of why they were emailed
+    subject = Column(String(255), nullable=True)
+    attachments = Column(JSON, nullable=False, default=list)
 
     period = relationship("Period")
 
@@ -154,6 +155,7 @@ class Solver(Base):
     name = Column(String(128), unique=True, nullable=False, index=True)
     region = Column(String(64), nullable=False, index=True)
     location = Column(String(128), nullable=True)
+    phone = Column(String(64), nullable=True)
     active = Column(Integer, default=1, nullable=False)  # 1 = active, 0 = archived
     is_lead = Column(Integer, default=0, nullable=False)  # 1 = regional lead
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -182,14 +184,15 @@ class RegionSnapshot(Base):
     avg_onsite_tat_hrs = Column(Float, nullable=True)
     avg_rating = Column(Float, nullable=True)
     avg_jobs_initiated = Column(Float, nullable=True)
-    staffing = Column(String(32), nullable=True)        
-    performance = Column(String(32), nullable=True)     
+    staffing = Column(String(32), nullable=True)        # "overloaded" | "balanced" | "under_utilised"
+    performance = Column(String(32), nullable=True)     # "strong" | "on_track" | "needs_improvement" | "insufficient_data"
     needs_coaching_count = Column(Integer, default=0)
     strong_count = Column(Integer, default=0)
     locations = Column(JSON, nullable=False, default=list)
     solver_names = Column(JSON, nullable=False, default=list)
 
     period = relationship("Period")
+
 
 class JobRecord(Base):
     """One row per job as it appears in TOTAL VALUED or SOLVERS BASKET.
@@ -237,6 +240,71 @@ class JobRecord(Base):
     period = relationship("Period")
 
 
+class AppSetting(Base):
+    """Single-row-per-key admin-editable settings (fleet bonus rate, TAT
+    allowance for remote regions, dormancy threshold, etc.) so these can be
+    tuned from the UI without a code change/redeploy."""
+    __tablename__ = "app_settings"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
+                        nullable=False)
+
+
+class FleetEntry(Base):
+    """One sourced fleet, mirroring SOLVERS__Fleet_Bonus_Calculator.xlsx.
+
+    Bonus = billed_amount x rate, where rate is the flat bonus rate
+    (default 3%) if fleet_size_booked >= min_fleet_size AND
+    client_satisfied is true, else 0. billed_amount = price_per_vehicle x
+    approved_count. See /api/settings/fleet-bonus for the editable rate
+    and minimum.
+    """
+    __tablename__ = "fleet_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fleet_client_name = Column(String(255), nullable=False)
+    solver_name = Column(String(128), nullable=False, index=True)
+    fleet_size_booked = Column(Integer, nullable=False, default=0)
+    price_per_vehicle = Column(Float, nullable=False, default=0.0)
+    approved_count = Column(Integer, nullable=False, default=0)
+    client_satisfied = Column(Integer, default=0, nullable=False)  # 1 = Yes / closed, 0 = not yet
+    rate = Column(Float, nullable=True)
+    billed_amount = Column(Float, nullable=True)
+    bonus_amount = Column(Float, nullable=True)
+    status = Column(String(32), nullable=False, default="open")  # "open" | "closed" | "paid"
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
+                        nullable=False)
+
+
+class Complaint(Base):
+    """A complaint or accident logged against a solver's operations.
+
+    `kind` distinguishes a client/operational complaint from a field
+    accident (e.g. vehicle collision while travelling to a job). Free-text
+    `description`/`resolution_notes` plus a small status workflow is
+    deliberately simple — this is a log, not a full case-management tool.
+    """
+    __tablename__ = "complaints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(16), nullable=False, default="complaint")  # "complaint" | "accident"
+    solver_name = Column(String(128), nullable=False, index=True)
+    region = Column(String(64), nullable=True)
+    date_occurred = Column(DateTime, nullable=True)
+    severity = Column(String(16), nullable=False, default="medium")  # "low" | "medium" | "high"
+    description = Column(Text, nullable=False)
+    reported_by = Column(String(128), nullable=True)
+    status = Column(String(16), nullable=False, default="open")  # "open" | "investigating" | "resolved" | "closed"
+    resolution_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
+                        nullable=False)
+
+
 class RatingRecord(Base):
     """One row per client rating, from the CLIENT RATING sheet.
 
@@ -262,76 +330,3 @@ class RatingRecord(Base):
     dedup_key = Column(String(255), nullable=False, unique=True, index=True)
 
     period = relationship("Period")
-
-
-# ===========================================================================
-# Compensation module
-# ---------------------------------------------------------------------------
-# Ported from the standalone Solvit Compensation Engine v5. Kept in separate
-# tables (prefixed to avoid colliding with the performance-portal tables
-# above — notably the portal's own `solvers` roster) and linked to the rest
-# of the portal by solver *name*. See app/compensation_routes.py for the API
-# and app/compensation_engine.py for the (unchanged) calculation logic.
-# ===========================================================================
-
-class SolverCompensation(Base):
-    """Compensation roster — one row per solver, with the historical monthly
-    job averages that drive T1/T2 threshold calculation.
-
-    Distinct from the portal's `Solver` roster (which tracks region/location/
-    active status): this table only carries the numbers the pay engine needs.
-    The two are matched by ``name``.
-    """
-    __tablename__ = "solver_compensation"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(120), nullable=False, unique=True, index=True)
-    region = Column(String(60), nullable=False)
-    avg_2024 = Column(Float, default=0.0)
-    avg_2025 = Column(Float, default=0.0)
-    avg_2026 = Column(Float, default=0.0)
-    active_2026 = Column(Boolean, default=False)
-    manual_best_override = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class CompPeriodEntry(Base):
-    """One row per solver per payroll period — the uploaded job counts plus the
-    pay breakdown computed at the time of entry (stored for the audit trail)."""
-    __tablename__ = "comp_period_entries"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    solver_name = Column(String(120), nullable=False)
-    period_start = Column(Date, nullable=False)
-    period_end = Column(Date, nullable=False)
-    period_label = Column(String(60))
-    std_jobs = Column(Integer, default=0)
-    assessment_earnings = Column(Numeric(12, 2), default=0)
-    # Computed at time of entry — stored for audit trail
-    t1_monthly = Column(Integer)
-    t2_monthly = Column(Integer)
-    t1_period = Column(Integer)
-    t2_period = Column(Integer)
-    gross_pay = Column(Numeric(12, 2))
-    wht = Column(Numeric(12, 2))
-    net_pay = Column(Numeric(12, 2))
-    top_rate = Column(String(20))
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        UniqueConstraint("solver_name", "period_start", name="uq_comp_solver_period"),
-    )
-
-
-class CompAuditLog(Base):
-    """Immutable audit trail for compensation overrides and period uploads."""
-    __tablename__ = "comp_audit_log"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    action = Column(String(60), nullable=False)   # e.g. "override_set", "period_uploaded"
-    solver_name = Column(String(120))
-    old_value = Column(Text)
-    new_value = Column(Text)
-    note = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)

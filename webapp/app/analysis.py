@@ -37,6 +37,31 @@ TARGETS = {
     # Region staffing thresholds (jobs/solver/month)
     "regional_overload_jobs_per_solver": 90,   # > 90 jobs/solver = overloaded
     "regional_under_jobs_per_solver": 30,      # < 30 = under-utilised
+    # Regions where travel distance to a client is typically short, so the
+    # flat 10h TAT target applies as-is. Every other registered region gets
+    # a TAT allowance added to the target before scoring in the 9-box grid
+    # (not in the raw KPI figures — those still show the true average).
+    # Both values are admin-editable via AppSetting key "tat_allowance"
+    # (see app/lifecycle.py) — these are just the defaults.
+    "tat_allowance_major_regions": ["Nairobi", "Mombasa"],
+    "tat_allowance_hours": 3.0,   # extra hours added to the 10h target for other regions
+
+    # Fleet bonus — mirrors SOLVERS__Fleet_Bonus_Calculator.xlsx. Admin-editable
+    # via AppSetting key "fleet_bonus" (see app/fleet.py).
+    "fleet_bonus_rate": 0.03,
+    "fleet_min_size": 10,
+
+    # Dormancy — a registered, active solver with zero valued jobs across
+    # this many of the most recent uploaded periods is flagged dormant.
+    # Admin-editable via AppSetting key "dormancy".
+    "dormancy_periods": 2,
+
+    # Performance-change flagging — a period-over-period move at least this
+    # large is surfaced as a notable change rather than normal noise.
+    "flag_tat_hours": 1.0,            # +/- 1h average TAT
+    "flag_submission_rate_pts": 0.08,  # +/- 8 percentage points
+    "flag_rating_points": 0.3,         # +/- 0.3 out of 5
+    "flag_volume_pct": 0.25,           # +/- 25% volume swing
 }
 
 
@@ -218,7 +243,13 @@ def _score_to_band(score: float | None) -> int | None:
     return 0
 
 
-def compute_talent_grid(stats: dict, initiated_target: float | None = None) -> dict | None:
+def compute_talent_grid(
+    stats: dict,
+    initiated_target: float | None = None,
+    region: str | None = None,
+    tat_allowance_hours: float | None = None,
+    major_regions: list[str] | None = None,
+) -> dict | None:
     """Compute the 9-box talent-grid placement for a solver.
 
     Returns a dict with:
@@ -234,14 +265,28 @@ def compute_talent_grid(stats: dict, initiated_target: float | None = None) -> d
     count across solvers in the same operating region (falls back to the
     team-wide average when the solver's region can't be determined).
 
+    `region` + `tat_allowance_hours` + `major_regions`: solvers travelling
+    to clients outside Nairobi/Mombasa cover far greater distances, so their
+    TAT target in THIS scoring (not the raw KPI numbers shown elsewhere) gets
+    extra hours before being scored. Defaults come from TARGETS but can be
+    overridden with the admin-edited AppSetting values.
+
     Returns None only if the solver has NO data at all (insufficient signal).
     """
     components = {}
 
+    major_regions = major_regions if major_regions is not None else TARGETS["tat_allowance_major_regions"]
+    allowance = tat_allowance_hours if tat_allowance_hours is not None else TARGETS["tat_allowance_hours"]
+    tat_target = TARGETS["total_tat_hours_max"]
+    region_adjusted = False
+    if region and region not in major_regions:
+        tat_target = tat_target + allowance
+        region_adjusted = True
+
     # --- Performance axis: TAT + submission rate + (optional) reject rate ---
     tat_score = _score_lower_better(
         stats.get("avg_total_tat_hrs"),
-        TARGETS["total_tat_hours_max"],
+        tat_target,
     )
     sub_score = _score_higher_better(
         stats.get("submission_rate"),
@@ -314,6 +359,8 @@ def compute_talent_grid(stats: dict, initiated_target: float | None = None) -> d
         "confidence": confidence,
         "components": {**perf_components, **quality_components},
         "initiated_target_used": round(effective_target, 1),
+        "tat_target_used": tat_target,
+        "region_tat_allowance_applied": region_adjusted,
     }
 
 
@@ -908,10 +955,16 @@ def rating_record_dedup_key(request_id) -> str:
     return f"rating|{request_id}"
 
 
-def recompute_talent_grids(solvers: list[dict], solver_region_map: dict[str, dict]) -> None:
+def recompute_talent_grids(
+    solvers: list[dict],
+    solver_region_map: dict[str, dict],
+    tat_allowance_hours: float | None = None,
+    major_regions: list[str] | None = None,
+) -> None:
     """Recompute each solver's talent_grid using their REGIONAL average
     jobs-initiated count as the quality-axis benchmark, instead of the
-    team-wide average used as a placeholder inside analyse_workbook.
+    team-wide average used as a placeholder inside analyse_workbook, and
+    apply the Nairobi/Mombasa-vs-rest TAT travel allowance.
 
     Mutates `solvers` in place (updates the "talent_grid" key on each dict).
     Call this after solver->region matching is available (region info isn't
@@ -939,7 +992,13 @@ def recompute_talent_grids(solvers: list[dict], solver_region_map: dict[str, dic
         info = solver_region_map.get(s["name"])
         region = info["region"] if info else "Unassigned"
         target = bucket_avg.get(region) or team_avg
-        s["talent_grid"] = compute_talent_grid(s, initiated_target=target)
+        s["talent_grid"] = compute_talent_grid(
+            s,
+            initiated_target=target,
+            region=region,
+            tat_allowance_hours=tat_allowance_hours,
+            major_regions=major_regions,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1016,6 +1075,149 @@ def compare_snapshots(current: dict, previous: dict) -> dict:
     out["improvements"] = improvements
     out["regressions"] = regressions
 
+    return out
+
+
+def flag_significant_changes(comparison: dict, targets: dict | None = None) -> dict:
+    """Mark which metrics in a compare_snapshots() result moved by more than
+    a "worth noticing" threshold, and give an overall verdict.
+
+    This is what powers the "flag solvers who have improved or dropped
+    versus previous data" requirement — it's deliberately a thin layer over
+    compare_snapshots() so the two stay consistent; this just adds a
+    significance threshold per metric instead of flagging every tiny move.
+    """
+    targets = targets or TARGETS
+    thresholds = {
+        "total_tat": targets.get("flag_tat_hours", 1.0),
+        "response_tat": targets.get("flag_tat_hours", 1.0),
+        "onsite_tat": targets.get("flag_tat_hours", 1.0) / 2,
+        "submission_rate": targets.get("flag_submission_rate_pts", 0.08),
+        "rating": targets.get("flag_rating_points", 0.3),
+    }
+    pct_metrics = {"volume": targets.get("flag_volume_pct", 0.25), "jobs_initiated": targets.get("flag_volume_pct", 0.25)}
+
+    metrics = comparison.get("metrics", {})
+    significant_improved = []
+    significant_declined = []
+    for key, m in metrics.items():
+        d = m.get("delta")
+        if d is None:
+            continue
+        is_sig = False
+        if key in thresholds:
+            is_sig = abs(d) >= thresholds[key]
+        elif key in pct_metrics:
+            prev = m.get("previous") or 0
+            if prev:
+                is_sig = abs(d) / prev >= pct_metrics[key]
+            else:
+                is_sig = d != 0
+        if not is_sig:
+            continue
+        m["significant"] = True
+        if m["direction"] == "improved":
+            significant_improved.append(key)
+        elif m["direction"] == "worsened":
+            significant_declined.append(key)
+
+    if significant_declined and significant_improved:
+        verdict = "mixed"
+    elif significant_declined:
+        verdict = "declined"
+    elif significant_improved:
+        verdict = "improved"
+    else:
+        verdict = "steady"
+
+    return {
+        "verdict": verdict,
+        "significant_improved": significant_improved,
+        "significant_declined": significant_declined,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fleet sourcing bonus — mirrors SOLVERS__Fleet_Bonus_Calculator.xlsx
+# ---------------------------------------------------------------------------
+
+def compute_fleet_row(
+    fleet_size_booked: float | None,
+    price_per_vehicle: float | None,
+    approved_count: float | None,
+    client_satisfied: bool,
+    rate: float | None = None,
+    min_size: int | None = None,
+) -> dict:
+    """Reproduce the calculator's G/H/I columns exactly:
+
+      Rate   = flat rate if fleet_size_booked >= min AND client_satisfied, else 0
+      Billed = price_per_vehicle x approved_count
+      Bonus  = Billed x Rate
+
+    `rate`/`min_size` default to TARGETS["fleet_bonus_rate"]/["fleet_min_size"]
+    but are overridable from the admin-edited AppSetting so a policy change
+    doesn't need a code deploy.
+    """
+    rate = rate if rate is not None else TARGETS["fleet_bonus_rate"]
+    min_size = min_size if min_size is not None else TARGETS["fleet_min_size"]
+
+    fleet_size_booked = fleet_size_booked or 0
+    price_per_vehicle = price_per_vehicle or 0
+    approved_count = approved_count or 0
+
+    effective_rate = rate if (fleet_size_booked >= min_size and client_satisfied) else 0.0
+    billed_amount = price_per_vehicle * approved_count
+    bonus_amount = billed_amount * effective_rate
+
+    return {
+        "rate": effective_rate,
+        "billed_amount": billed_amount,
+        "bonus_amount": bonus_amount,
+        "qualifies": effective_rate > 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dormancy — registered solvers with no recent valued work
+# ---------------------------------------------------------------------------
+
+def detect_dormancy(
+    registered_names: list[str],
+    recent_volumes: dict[str, list[int]],
+    dormancy_periods: int | None = None,
+) -> dict[str, dict]:
+    """For each registered solver, look at their volume across the most
+    recent uploaded periods (oldest to newest, already trimmed to the
+    window the caller wants checked) and flag them dormant if every one
+    of those periods shows zero valued jobs.
+
+    `recent_volumes` maps solver name -> list of volumes for the last N
+    periods (N == dormancy_periods, or however many periods exist if fewer).
+    A solver with no entry at all (never appeared in any upload) is also
+    dormant — "still in the system but not working" is exactly this case.
+
+    Returns {name: {"status": "active"|"dormant", "periods_checked": int,
+                     "last_active_period_index": int|None}}
+    """
+    dormancy_periods = dormancy_periods or TARGETS["dormancy_periods"]
+    out = {}
+    for name in registered_names:
+        vols = recent_volumes.get(name, [])
+        checked = vols[-dormancy_periods:] if vols else []
+        last_active_idx = None
+        for i, v in enumerate(checked):
+            if v and v > 0:
+                last_active_idx = i
+        if not checked or all((v or 0) == 0 for v in checked):
+            status = "dormant"
+        else:
+            status = "active"
+        out[name] = {
+            "status": status,
+            "periods_checked": len(checked),
+            "last_active_period_index": last_active_idx,
+        }
     return out
 
 
@@ -1105,3 +1307,118 @@ def aggregate_by_region(solver_snapshots: list[dict], solver_region_map: dict[st
 
     regions.sort(key=lambda r: (r["region"] == "Unassigned", -r["total_assigned"]))
     return regions
+
+
+# ---------------------------------------------------------------------------
+# Annual / quarterly recap — a solver's journey across many periods
+# ---------------------------------------------------------------------------
+
+def build_recap(solver_name: str, snapshots: list[dict]) -> dict:
+    """Roll up a solver's snapshots (already filtered by the caller to the
+    requested year/quarter window, oldest first) into a single journey
+    summary: career-to-date totals, trend direction, best/worst period, and
+    how often they were flagged strong vs. needing coaching.
+
+    `snapshots` items are dicts shaped like snapshot_to_dict() output, each
+    with a "period_label" key.
+    """
+    if not snapshots:
+        return {
+            "solver_name": solver_name,
+            "periods_covered": 0,
+            "timeline": [],
+        }
+
+    def _avg(field):
+        vals = [s.get(field) for s in snapshots if s.get(field) is not None]
+        return (sum(vals) / len(vals)) if vals else None
+
+    def _sum(field):
+        return sum((s.get(field) or 0) for s in snapshots)
+
+    total_volume = _sum("volume")
+    total_assigned = _sum("assigned_count")
+    total_initiated = _sum("jobs_initiated")
+    total_backlog_cleared = _sum("backlog_count")
+
+    strong_periods = sum(1 for s in snapshots if "strong" in (s.get("focus_areas") or []))
+    coaching_periods = sum(
+        1 for s in snapshots
+        if (s.get("focus_areas") or []) and "strong" not in (s.get("focus_areas") or [])
+    )
+
+    tat_series = [s.get("avg_total_tat_hrs") for s in snapshots]
+    rating_series = [s.get("avg_rating") for s in snapshots]
+    sub_series = [s.get("submission_rate") for s in snapshots]
+
+    best_tat_period = min(
+        (s for s in snapshots if s.get("avg_total_tat_hrs") is not None),
+        key=lambda s: s["avg_total_tat_hrs"], default=None,
+    )
+    best_rating_period = max(
+        (s for s in snapshots if s.get("avg_rating") is not None),
+        key=lambda s: s["avg_rating"], default=None,
+    )
+
+    # Simple trend: compare the average of the first half of the window to
+    # the second half, for TAT and submission rate (the two headline metrics).
+    def _half_trend(series, lower_better):
+        vals = [v for v in series if v is not None]
+        if len(vals) < 2:
+            return "insufficient_data"
+        mid = len(vals) // 2
+        first_half = vals[:mid] or vals[:1]
+        second_half = vals[mid:]
+        a = sum(first_half) / len(first_half)
+        b = sum(second_half) / len(second_half)
+        if abs(b - a) < 1e-6:
+            return "steady"
+        improved = (b < a) if lower_better else (b > a)
+        return "improved" if improved else "declined"
+
+    timeline = [
+        {
+            "period_label": s.get("period_label"),
+            "volume": s.get("volume"),
+            "avg_total_tat_hrs": s.get("avg_total_tat_hrs"),
+            "submission_rate": s.get("submission_rate"),
+            "avg_rating": s.get("avg_rating"),
+            "jobs_initiated": s.get("jobs_initiated"),
+            "focus_areas": s.get("focus_areas"),
+            "talent_grid_label": (s.get("talent_grid") or {}).get("label"),
+        }
+        for s in snapshots
+    ]
+
+    return {
+        "solver_name": solver_name,
+        "periods_covered": len(snapshots),
+        "period_labels": [s.get("period_label") for s in snapshots],
+        "totals": {
+            "volume": total_volume,
+            "assigned_count": total_assigned,
+            "jobs_initiated": total_initiated,
+            "backlog_cleared": total_backlog_cleared,
+        },
+        "averages": {
+            "avg_total_tat_hrs": _avg("avg_total_tat_hrs"),
+            "submission_rate": _avg("submission_rate"),
+            "avg_rating": _avg("avg_rating"),
+        },
+        "recognition": {
+            "strong_periods": strong_periods,
+            "coaching_periods": coaching_periods,
+        },
+        "best": {
+            "fastest_tat_period": best_tat_period.get("period_label") if best_tat_period else None,
+            "fastest_tat_hrs": best_tat_period.get("avg_total_tat_hrs") if best_tat_period else None,
+            "highest_rating_period": best_rating_period.get("period_label") if best_rating_period else None,
+            "highest_rating": best_rating_period.get("avg_rating") if best_rating_period else None,
+        },
+        "trend": {
+            "tat": _half_trend(tat_series, lower_better=True),
+            "submission_rate": _half_trend(sub_series, lower_better=False),
+            "rating": _half_trend(rating_series, lower_better=False),
+        },
+        "timeline": timeline,
+    }
